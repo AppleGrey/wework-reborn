@@ -5,11 +5,7 @@
 - 修改 `internal/config/config.go`：`MysqlConfig` → `PostgresqlConfig`，配置加载路径改为本地
 - 修改 `internal/dao/gorm.go`：数据库驱动改为 `gorm.io/driver/postgres`，更新 DSN 连接格式
 - 修改所有 model 文件：将时间字段类型从 `type:datetime` 改为 `type:timestamp`（PostgreSQL 不支持 datetime）
-  - `internal/model/user_info.go`
-  - `internal/model/user_contact.go`
-  - `internal/model/session.go`
-  - `internal/model/group_info.go`
-  - `internal/model/contact_apply.go`
+- 修改 `cmd/kama_chat_server/main.go`：临时改用 HTTP（注释 TLS）方便本地测试
 - 添加依赖：`gorm.io/driver/postgres v1.6.0` 及相关 PostgreSQL 驱动包
 
 ---
