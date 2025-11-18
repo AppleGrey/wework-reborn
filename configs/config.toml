@@ -1,14 +1,14 @@
 [mainConfig]
-appName = "your app name"
+appName = "wework"
 host = "0.0.0.0"
 port = 8000
 
-[mysqlConfig]
+[postgresqlConfig]
 host = "127.0.0.1"
-port = 3306
-user = "root"
-password = "123456"
-databaseName = "your database name"
+port = 5432
+user = "postgres"
+password = ""
+databaseName = "wework"
 
 [redisConfig]
 host = "127.0.0.1"
