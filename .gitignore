@@ -39,4 +39,5 @@ internal/service/kafka/start.bat
 
 *.ext
 
-your log path
+logs/
+logs/*
