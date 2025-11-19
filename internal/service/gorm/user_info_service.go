@@ -4,8 +4,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	redis "github.com/go-redis/redis/v8"
-	"gorm.io/gorm"
 	"kama_chat_server/internal/dao"
 	"kama_chat_server/internal/dto/request"
 	"kama_chat_server/internal/dto/respond"
@@ -14,10 +12,14 @@ import (
 	"kama_chat_server/internal/service/sms"
 	"kama_chat_server/pkg/constants"
 	"kama_chat_server/pkg/enum/user_info/user_status_enum"
+	"kama_chat_server/pkg/util/password"
 	"kama_chat_server/pkg/util/random"
 	"kama_chat_server/pkg/zlog"
 	"regexp"
 	"time"
+
+	redis "github.com/go-redis/redis/v8"
+	"gorm.io/gorm"
 )
 
 type userInfoService struct {
@@ -53,7 +55,6 @@ func (u *userInfoService) checkUserIsAdminOrNot(user model.UserInfo) int8 {
 
 // Login 登录
 func (u *userInfoService) Login(loginReq request.LoginRequest) (string, *respond.LoginRespond, int) {
-	password := loginReq.Password
 	var user model.UserInfo
 	res := dao.GormDB.First(&user, "account = ?", loginReq.Account)
 	if res.Error != nil {
@@ -65,7 +66,9 @@ func (u *userInfoService) Login(loginReq request.LoginRequest) (string, *respond
 		zlog.Error(res.Error.Error())
 		return constants.SYSTEM_ERROR, nil, -1
 	}
-	if user.Password != password {
+
+	// 验证密码
+	if !password.VerifyPassword(user.Password, loginReq.Password) {
 		message := "密码不正确，请重试"
 		zlog.Error(message)
 		return message, nil, -2
@@ -188,7 +191,15 @@ func (u *userInfoService) Register(registerReq request.RegisterRequest) (string,
 	newUser.Uuid = "U" + random.GetNowAndLenRandomString(11)
 	newUser.Account = registerReq.Account
 	newUser.Nickname = registerReq.Nickname
-	newUser.Password = registerReq.Password
+
+	// 加密密码
+	hashedPassword, err := password.HashPassword(registerReq.Password)
+	if err != nil {
+		zlog.Error("密码加密失败: " + err.Error())
+		return constants.SYSTEM_ERROR, nil, -1
+	}
+	newUser.Password = hashedPassword
+
 	newUser.Avatar = "https://cube.elemecdn.com/0/88/03b0d39583f48206768a7534e55bcpng.png"
 	newUser.CreatedAt = time.Now()
 	newUser.IsAdmin = 0
@@ -201,8 +212,8 @@ func (u *userInfoService) Register(registerReq request.RegisterRequest) (string,
 	}
 
 	registerRsp := &respond.RegisterRespond{
-		Uuid:    newUser.Uuid,
-		Account: newUser.Account,
+		Uuid:      newUser.Uuid,
+		Account:   newUser.Account,
 		Nickname:  newUser.Nickname,
 		Email:     newUser.Email,
 		Avatar:    newUser.Avatar,

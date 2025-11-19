@@ -9,6 +9,14 @@
 - 修改 `web/chat-server/vue.config.js`：前端改用 HTTP 在 8080 端口运行
 - 添加依赖：`gorm.io/driver/postgres v1.6.0` 及相关 PostgreSQL 驱动包
 
+### 2025-11-19 - 添加密码加密功能
+- 新增 `pkg/util/password/password.go`：使用 bcrypt 算法实现密码加密和验证
+- 修改 `internal/service/gorm/user_info_service.go`：
+  - 注册时使用 bcrypt 加密密码后存储
+  - 登录时使用 bcrypt 验证密码
+- 添加依赖：`golang.org/x/crypto/bcrypt`
+- **重要**：数据库中原有的明文密码将无法登录，需要重新注册
+
 ### 2025-11-19 - 添加 HTTPS 开关配置
 - 修改 `configs/config.toml`：添加 `enableHTTPS`、`certFile`、`keyFile` 配置项，可通过配置切换 HTTP/HTTPS
 - 修改 `internal/config/config.go`：`MainConfig` 结构体添加 HTTPS 相关字段
