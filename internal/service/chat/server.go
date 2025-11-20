@@ -64,6 +64,16 @@ func normalizePath(path string) string {
 	return path[staticIndex:]
 }
 
+// getUserInfo 根据 UUID 查询用户的昵称和头像
+func getUserInfo(userId string) (string, string) {
+	var user model.UserInfo
+	if res := dao.GormDB.Select("nickname, avatar").Where("uuid = ?", userId).First(&user); res.Error != nil {
+		zlog.Error("查询用户信息失败: " + res.Error.Error())
+		return "", ""
+	}
+	return user.Nickname, user.Avatar
+}
+
 // Start 启动函数，Server端用主进程起，Client端可以用协程起
 func (s *Server) Start() {
 	defer func() {
@@ -189,10 +199,12 @@ func (s *Server) Start() {
 						}
 
 					} else if message.ReceiveId[0] == 'G' { // 发送给Group
+						// 动态查询发送者的昵称和头像
+						sendName, sendAvatar := getUserInfo(message.SendId)
 						messageRsp := respond.GetGroupMessageListRespond{
 							SendId:     message.SendId,
-							SendName:   message.SendName,
-							SendAvatar: chatMessageReq.SendAvatar,
+							SendName:   sendName,   // 从用户表动态查询
+							SendAvatar: sendAvatar, // 从用户表动态查询
 							ReceiveId:  message.ReceiveId,
 							Type:       message.Type,
 							Content:    message.Content,
@@ -282,10 +294,12 @@ func (s *Server) Start() {
 						// 如果能找到ReceiveId，说明在线，可以发送，否则存表后跳过
 						// 因为在线的时候是通过websocket更新消息记录的，离线后通过存表，登录时只调用一次数据库操作
 						// 切换chat对象后，前端的messageList也会改变，获取messageList从第二次就是从redis中获取
+						// 动态查询发送者的昵称和头像
+						sendName, sendAvatar := getUserInfo(message.SendId)
 						messageRsp := respond.GetMessageListRespond{
 							SendId:     message.SendId,
-							SendName:   message.SendName,
-							SendAvatar: chatMessageReq.SendAvatar,
+							SendName:   sendName,   // 从用户表动态查询
+							SendAvatar: sendAvatar, // 从用户表动态查询
 							ReceiveId:  message.ReceiveId,
 							Type:       message.Type,
 							Content:    message.Content,
@@ -339,10 +353,12 @@ func (s *Server) Start() {
 							}
 						}
 					} else {
+						// 动态查询发送者的昵称和头像
+						sendName, sendAvatar := getUserInfo(message.SendId)
 						messageRsp := respond.GetGroupMessageListRespond{
 							SendId:     message.SendId,
-							SendName:   message.SendName,
-							SendAvatar: chatMessageReq.SendAvatar,
+							SendName:   sendName,   // 从用户表动态查询
+							SendAvatar: sendAvatar, // 从用户表动态查询
 							ReceiveId:  message.ReceiveId,
 							Type:       message.Type,
 							Content:    message.Content,
@@ -440,10 +456,12 @@ func (s *Server) Start() {
 						// 如果能找到ReceiveId，说明在线，可以发送，否则存表后跳过
 						// 因为在线的时候是通过websocket更新消息记录的，离线后通过存表，登录时只调用一次数据库操作
 						// 切换chat对象后，前端的messageList也会改变，获取messageList从第二次就是从redis中获取
+						// 动态查询发送者的昵称和头像
+						sendName, sendAvatar := getUserInfo(message.SendId)
 						messageRsp := respond.AVMessageRespond{
 							SendId:     message.SendId,
-							SendName:   message.SendName,
-							SendAvatar: message.SendAvatar,
+							SendName:   sendName,   // 从用户表动态查询
+							SendAvatar: sendAvatar, // 从用户表动态查询
 							ReceiveId:  message.ReceiveId,
 							Type:       message.Type,
 							Content:    message.Content,

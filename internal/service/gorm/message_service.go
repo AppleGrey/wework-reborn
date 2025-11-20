@@ -35,17 +35,53 @@ func (m *messageService) GetMessageList(userOneId, userTwoId string) (string, []
 				zlog.Error(res.Error.Error())
 				return constants.SYSTEM_ERROR, nil, -1
 			}
+			
+			// 收集所有唯一的 send_id，批量查询用户信息
+			sendIdSet := make(map[string]bool)
+			for _, message := range messageList {
+				if message.SendId != "" {
+					sendIdSet[message.SendId] = true
+				}
+			}
+			
+			// 批量查询用户信息
+			var sendIdList []string
+			for sendId := range sendIdSet {
+				sendIdList = append(sendIdList, sendId)
+			}
+			
+			userInfoMap := make(map[string]model.UserInfo)
+			if len(sendIdList) > 0 {
+				var users []model.UserInfo
+				if res := dao.GormDB.Select("uuid, nickname, avatar").Where("uuid IN ?", sendIdList).Find(&users); res.Error != nil {
+					zlog.Error("批量查询用户信息失败: " + res.Error.Error())
+				} else {
+					for _, user := range users {
+						userInfoMap[user.Uuid] = user
+					}
+				}
+			}
+			
 			var rspList []respond.GetMessageListRespond
 			for _, message := range messageList {
 				if message.IsEncrypted {
 					zlog.Info(fmt.Sprintf("读取加密消息: Content长度=%d, IV长度=%d, AuthTag长度=%d", 
 						len(message.Content), len(message.IV), len(message.AuthTag)))
 				}
+				
+				// 从用户信息 map 中获取发送者的名字和头像
+				sendName := ""
+				sendAvatar := ""
+				if user, exists := userInfoMap[message.SendId]; exists {
+					sendName = user.Nickname
+					sendAvatar = user.Avatar
+				}
+				
 				rspList = append(rspList, respond.GetMessageListRespond{
 					Uuid:       message.Uuid, // 消息 UUID
 					SendId:     message.SendId,
-					SendName:   message.SendName,
-					SendAvatar: message.SendAvatar,
+					SendName:   sendName,   // 从用户表动态查询
+					SendAvatar: sendAvatar, // 从用户表动态查询
 					ReceiveId:  message.ReceiveId,
 					Content:    message.Content,
 					Url:        message.Url,
@@ -100,12 +136,47 @@ func (m *messageService) GetGroupMessageList(groupId string) (string, []respond.
 				zlog.Error(res.Error.Error())
 				return constants.SYSTEM_ERROR, nil, -1
 			}
+			
+			// 收集所有唯一的 send_id，批量查询用户信息
+			sendIdSet := make(map[string]bool)
+			for _, message := range messageList {
+				if message.SendId != "" {
+					sendIdSet[message.SendId] = true
+				}
+			}
+			
+			// 批量查询用户信息
+			var sendIdList []string
+			for sendId := range sendIdSet {
+				sendIdList = append(sendIdList, sendId)
+			}
+			
+			userInfoMap := make(map[string]model.UserInfo)
+			if len(sendIdList) > 0 {
+				var users []model.UserInfo
+				if res := dao.GormDB.Select("uuid, nickname, avatar").Where("uuid IN ?", sendIdList).Find(&users); res.Error != nil {
+					zlog.Error("批量查询用户信息失败: " + res.Error.Error())
+				} else {
+					for _, user := range users {
+						userInfoMap[user.Uuid] = user
+					}
+				}
+			}
+			
 			var rspList []respond.GetGroupMessageListRespond
 			for _, message := range messageList {
+				// 从用户信息 map 中获取发送者的名字和头像
+				sendName := ""
+				sendAvatar := ""
+				if user, exists := userInfoMap[message.SendId]; exists {
+					sendName = user.Nickname
+					sendAvatar = user.Avatar
+				}
+				
 				rsp := respond.GetGroupMessageListRespond{
 					SendId:     message.SendId,
-					SendName:   message.SendName,
-					SendAvatar: message.SendAvatar,
+					SendName:   sendName,   // 从用户表动态查询
+					SendAvatar: sendAvatar, // 从用户表动态查询
 					ReceiveId:  message.ReceiveId,
 					Content:    message.Content,
 					Url:        message.Url,
