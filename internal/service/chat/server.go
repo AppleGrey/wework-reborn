@@ -529,3 +529,23 @@ func (s *Server) RemoveClient(uuid string) {
 	delete(s.Clients, uuid)
 	s.mutex.Unlock()
 }
+
+// PushMessage 推送消息给发送方和接收方（用于 HTTP API 发送消息后的推送）
+func (s *Server) PushMessage(messageBack *MessageBack, sendId, receiveId string) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+
+	// 推送给接收方
+	if receiveClient, ok := s.Clients[receiveId]; ok {
+		receiveClient.SendBack <- messageBack
+		zlog.Info(fmt.Sprintf("已通过 WebSocket 推送消息给接收方: %s", receiveId))
+	} else {
+		zlog.Info(fmt.Sprintf("接收方 %s 不在线，消息已保存到数据库", receiveId))
+	}
+
+	// 推送给发送方（回显）
+	if sendClient, ok := s.Clients[sendId]; ok {
+		sendClient.SendBack <- messageBack
+		zlog.Info(fmt.Sprintf("已通过 WebSocket 推送消息给发送方（回显）: %s", sendId))
+	}
+}

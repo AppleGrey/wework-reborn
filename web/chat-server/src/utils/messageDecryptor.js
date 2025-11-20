@@ -192,6 +192,7 @@ export async function decryptMessage(message) {
       
       await acceptSession(store.state.masterKey, contactId, {
         identity_key: message.sender_identity_key,
+        identity_key_curve25519: message.sender_identity_key_curve25519,
         ephemeral_key: message.sender_ephemeral_key,
         ratchet_key: message.ratchet_key,
         used_one_time_pre_key_id: message.used_one_time_pre_key_id,

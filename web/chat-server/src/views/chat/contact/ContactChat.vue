@@ -958,7 +958,7 @@ import {
   encryptAndSendMessage,
   receiveAndDecryptMessage,
 } from "@/crypto";
-import { decryptMessageList } from "@/utils/messageDecryptor";
+import { decryptMessageList, decryptMessage } from "@/utils/messageDecryptor";
 export default {
   name: "ContactChat",
   components: {
@@ -1066,30 +1066,54 @@ export default {
         await getGroupMessageList();
       }
       console.log(data.sessionId);
-      store.state.socket.onmessage = (jsonMessage) => {
-        const message = JSON.parse(jsonMessage.data);
-        if (message.type != 3) {
-          if (
-            // 群聊过来的消息，且当前会话是该群聊
-            (message.receive_id[0] == "G" &&
-              message.receive_id == data.contactInfo.contact_id) ||
-            // 其他用户过来的消息，且当前会话是该用户
-            (message.receive_id[0] == "U" &&
-              message.receive_id == data.userInfo.uuid) ||
-            // 自己发送的消息
-            message.send_id == data.userInfo.uuid
-          ) {
-            console.log("收到消息：", message);
-            if (data.messageList == null) {
-              data.messageList = [];
+      // 设置 WebSocket 消息处理器（复用原有机制，添加解密支持）
+      store.state.socket.onmessage = async (jsonMessage) => {
+        try {
+          const message = JSON.parse(jsonMessage.data);
+          if (message.type != 3) {
+            // 检查消息是否属于当前聊天窗口
+            const isGroupChat = data.contactInfo.contact_id && data.contactInfo.contact_id[0] == "G";
+            const isCurrentChat = 
+              // 群聊：消息的接收方是当前群聊
+              (isGroupChat && message.receive_id == data.contactInfo.contact_id) ||
+              // 单聊：消息是在当前用户和联系人之间发送的
+              (!isGroupChat && 
+                ((message.send_id == data.userInfo.uuid && message.receive_id == data.contactInfo.contact_id) ||
+                 (message.send_id == data.contactInfo.contact_id && message.receive_id == data.userInfo.uuid)));
+            
+            if (isCurrentChat) {
+              console.log("收到消息：", message);
+              if (data.messageList == null) {
+                data.messageList = [];
+              }
+              // 检查消息是否已存在（避免重复显示，特别是乐观更新的消息）
+              const messageExists = data.messageList.some(msg => msg.uuid === message.uuid);
+              if (!messageExists) {
+                // 如果是加密消息，先解密
+                let messageToAdd = message;
+                if (message.is_encrypted) {
+                  try {
+                    console.log("🔓 开始解密 WebSocket 收到的加密消息");
+                    messageToAdd = await decryptMessage(message);
+                    console.log("✅ 消息解密成功");
+                  } catch (error) {
+                    console.error("❌ 解密消息失败:", error);
+                    // 如果解密失败，显示错误提示，但仍然添加到列表
+                    messageToAdd = {
+                      ...message,
+                      content: `[解密失败: ${error.message}]`,
+                    };
+                  }
+                }
+                
+                data.messageList.push(messageToAdd);
+                scrollToBottom();
+              }
             }
-            data.messageList.push(message);
-            scrollToBottom();
-          }
-          // 其他接受的消息都不显示在messageList中，而是通过切换页面或刷新页面getMessageList来获取
-        } else {
-          var messageAVdata = JSON.parse(message.av_data); // 后端message的该字段命名为av_data
-          if (messageAVdata.messageId === "CURRENT_PEERS") {
+            // 其他接受的消息都不显示在messageList中，而是通过切换页面或刷新页面getMessageList来获取
+          } else {
+            var messageAVdata = JSON.parse(message.av_data); // 后端message的该字段命名为av_data
+            if (messageAVdata.messageId === "CURRENT_PEERS") {
             console.log(
               "获取CURRENT_PEERS当前在线用户列表，curContactList:",
               messageAVdata.messageData.curContactList
@@ -1138,10 +1162,13 @@ export default {
           }
           data.messageList.push(message);
           scrollToBottom();
+          }
+        } catch (error) {
+          console.error("处理消息出错:", error);
         }
       };
       scrollToBottom();
-      next();
+        next();
     });
     // 这是刚渲染/chat/:id页面的时候会调用
     onMounted(async () => {
@@ -1157,30 +1184,54 @@ export default {
           await getGroupMessageList();
         }
         console.log(data.sessionId);
-        store.state.socket.onmessage = (jsonMessage) => {
-          const message = JSON.parse(jsonMessage.data);
-          if (message.type != 3) {
-            if (
-              // 群聊过来的消息，且当前会话是该群聊
-              (message.receive_id[0] == "G" &&
-                message.receive_id == data.contactInfo.contact_id) ||
-              // 其他用户过来的消息，且当前会话是该用户
-              (message.receive_id[0] == "U" &&
-                message.receive_id == data.userInfo.uuid) ||
-              // 自己发送的消息
-              message.send_id == data.userInfo.uuid
-            ) {
-              console.log("收到消息：", message);
-              if (data.messageList == null) {
-                data.messageList = [];
+        // 设置 WebSocket 消息处理器（复用原有机制，添加解密支持）
+        store.state.socket.onmessage = async (jsonMessage) => {
+          try {
+            const message = JSON.parse(jsonMessage.data);
+            if (message.type != 3) {
+              // 检查消息是否属于当前聊天窗口
+              const isGroupChat = data.contactInfo.contact_id && data.contactInfo.contact_id[0] == "G";
+              const isCurrentChat = 
+                // 群聊：消息的接收方是当前群聊
+                (isGroupChat && message.receive_id == data.contactInfo.contact_id) ||
+                // 单聊：消息是在当前用户和联系人之间发送的
+                (!isGroupChat && 
+                  ((message.send_id == data.userInfo.uuid && message.receive_id == data.contactInfo.contact_id) ||
+                   (message.send_id == data.contactInfo.contact_id && message.receive_id == data.userInfo.uuid)));
+              
+              if (isCurrentChat) {
+                console.log("收到消息：", message);
+                if (data.messageList == null) {
+                  data.messageList = [];
+                }
+                // 检查消息是否已存在（避免重复显示，特别是乐观更新的消息）
+                const messageExists = data.messageList.some(msg => msg.uuid === message.uuid);
+                if (!messageExists) {
+                  // 如果是加密消息，先解密
+                  let messageToAdd = message;
+                  if (message.is_encrypted) {
+                    try {
+                      console.log("🔓 开始解密 WebSocket 收到的加密消息");
+                      messageToAdd = await decryptMessage(message);
+                      console.log("✅ 消息解密成功");
+                    } catch (error) {
+                      console.error("❌ 解密消息失败:", error);
+                      // 如果解密失败，显示错误提示，但仍然添加到列表
+                      messageToAdd = {
+                        ...message,
+                        content: `[解密失败: ${error.message}]`,
+                      };
+                    }
+                  }
+                  
+                  data.messageList.push(messageToAdd);
+                  scrollToBottom();
+                }
               }
-              data.messageList.push(message);
-              scrollToBottom();
-            }
-            // 其他接受的消息都不显示在messageList中，而是通过切换页面或刷新页面getMessageList来获取
-          } else {
-            var messageAVdata = JSON.parse(message.av_data); // 后端message的该字段命名为av_data
-            if (messageAVdata.messageId === "CURRENT_PEERS") {
+              // 其他接受的消息都不显示在messageList中，而是通过切换页面或刷新页面getMessageList来获取
+            } else {
+              var messageAVdata = JSON.parse(message.av_data); // 后端message的该字段命名为av_data
+              if (messageAVdata.messageId === "CURRENT_PEERS") {
               console.log(
                 "获取CURRENT_PEERS当前在线用户列表，curContactList:",
                 messageAVdata.messageData.curContactList
@@ -1224,15 +1275,18 @@ export default {
                 console.log("不支持的proxy类型");
               }
             }
-            console.log("收到消息：", message);
-            if (data.messageList == null) {
-              data.messageList = [];
-            }
-            data.messageList.push(message);
-            scrollToBottom();
+              console.log("收到消息：", message);
+              if (data.messageList == null) {
+                data.messageList = [];
+              }
+              data.messageList.push(message);
+              scrollToBottom();
           }
-        };
-        scrollToBottom();
+        } catch (error) {
+          console.error("处理消息出错:", error);
+        }
+      };
+      scrollToBottom();
       } catch (error) {
         console.error(error);
       }
@@ -1720,7 +1774,55 @@ export default {
           });
         }
         
-        // TODO: 通过 WebSocket 通知对方
+        // 乐观更新：立即在聊天窗口中显示消息
+        const now = new Date();
+        // 格式化时间为 "YYYY-MM-DD HH:mm:ss" 格式（与后端一致）
+        const formatDateTime = (date) => {
+          const year = date.getFullYear();
+          const month = String(date.getMonth() + 1).padStart(2, '0');
+          const day = String(date.getDate()).padStart(2, '0');
+          const hours = String(date.getHours()).padStart(2, '0');
+          const minutes = String(date.getMinutes()).padStart(2, '0');
+          const seconds = String(date.getSeconds()).padStart(2, '0');
+          return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+        };
+        
+        const messageToDisplay = {
+          uuid: messageId || `temp_${Date.now()}`, // 使用后端返回的 message_id，如果没有则使用临时 ID
+          send_id: data.userInfo.uuid,
+          send_name: data.userInfo.nickname,
+          send_avatar: data.userInfo.avatar,
+          receive_id: contactId,
+          type: 0, // 文本消息
+          content: plaintext, // 显示明文（发送方看到的是明文）
+          url: "",
+          file_type: "",
+          file_name: "",
+          file_size: "",
+          created_at: formatDateTime(now),
+          // 加密相关字段
+          is_encrypted: true,
+          encryption_version: 1,
+          message_type: requestData.message_type,
+          sender_identity_key: requestData.sender_identity_key,
+          sender_identity_key_curve25519: requestData.sender_identity_key_curve25519,
+          sender_ephemeral_key: requestData.sender_ephemeral_key,
+          used_one_time_pre_key_id: requestData.used_one_time_pre_key_id,
+          ratchet_key: requestData.ratchet_key,
+          counter: requestData.counter,
+          prev_counter: requestData.prev_counter,
+          iv: requestData.iv,
+          auth_tag: requestData.auth_tag,
+        };
+        
+        // 立即添加到消息列表（乐观更新）
+        if (data.messageList == null) {
+          data.messageList = [];
+        }
+        data.messageList.push(messageToDisplay);
+        console.log("✅ 已乐观更新消息到聊天窗口，消息ID:", messageId);
+        
+        // 清空输入框并滚动到底部
         data.chatMessage = "";
         scrollToBottom();
       } else {
@@ -1831,9 +1933,18 @@ export default {
 
     const scrollToBottom = () => {
       nextTick(() => {
-        const scrollHeight = data.innerRef.scrollHeight;
-        console.log(scrollHeight);
-        data.scrollbarRef.setScrollTop(scrollHeight);
+        // 检查 DOM 元素是否存在
+        if (!data.innerRef || !data.scrollbarRef) {
+          console.warn("scrollToBottom: DOM 元素未准备好");
+          return;
+        }
+        try {
+          const scrollHeight = data.innerRef.scrollHeight;
+          console.log(scrollHeight);
+          data.scrollbarRef.setScrollTop(scrollHeight);
+        } catch (error) {
+          console.warn("scrollToBottom 失败:", error);
+        }
       });
     };
 

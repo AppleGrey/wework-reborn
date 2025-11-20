@@ -505,6 +505,26 @@ func (k *KafkaServer) SendClientToLogout(client *Client) {
 	k.mutex.Unlock()
 }
 
+// PushMessage 推送消息给发送方和接收方（用于 HTTP API 发送消息后的推送）
+func (k *KafkaServer) PushMessage(messageBack *MessageBack, sendId, receiveId string) {
+	k.mutex.Lock()
+	defer k.mutex.Unlock()
+
+	// 推送给接收方
+	if receiveClient, ok := k.Clients[receiveId]; ok {
+		receiveClient.SendBack <- messageBack
+		zlog.Info(fmt.Sprintf("已通过 WebSocket 推送消息给接收方: %s", receiveId))
+	} else {
+		zlog.Info(fmt.Sprintf("接收方 %s 不在线，消息已保存到数据库", receiveId))
+	}
+
+	// 推送给发送方（回显）
+	if sendClient, ok := k.Clients[sendId]; ok {
+		sendClient.SendBack <- messageBack
+		zlog.Info(fmt.Sprintf("已通过 WebSocket 推送消息给发送方（回显）: %s", sendId))
+	}
+}
+
 func (k *KafkaServer) RemoveClient(uuid string) {
 	k.mutex.Lock()
 	delete(k.Clients, uuid)

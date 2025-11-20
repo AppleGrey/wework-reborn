@@ -2,12 +2,16 @@ package v1
 
 import (
 	"crypto/rand"
+	"encoding/json"
 	"fmt"
 	"net/http"
 
+	"kama_chat_server/internal/config"
 	"kama_chat_server/internal/dao"
 	"kama_chat_server/internal/dto/request"
+	"kama_chat_server/internal/dto/respond"
 	"kama_chat_server/internal/model"
+	"kama_chat_server/internal/service/chat"
 	"kama_chat_server/internal/service/gorm"
 	"kama_chat_server/pkg/zlog"
 	"time"
@@ -109,6 +113,9 @@ func SendEncryptedMessage(c *gin.Context) {
 		return
 	}
 
+	// 通过 WebSocket 推送消息给发送方和接收方
+	pushMessageViaWebSocket(&message)
+
 	zlog.Info("加密消息发送成功")
 	c.JSON(http.StatusOK, gin.H{
 		"code":    http.StatusOK,
@@ -117,6 +124,67 @@ func SendEncryptedMessage(c *gin.Context) {
 			"message_id": message.Uuid,
 		},
 	})
+}
+
+// pushMessageViaWebSocket 通过 WebSocket 推送消息
+func pushMessageViaWebSocket(message *model.Message) {
+	// 获取用户信息（昵称和头像）
+	var sender model.UserInfo
+	if res := dao.GormDB.Select("nickname, avatar").Where("uuid = ?", message.SendId).First(&sender); res.Error != nil {
+		zlog.Error("查询发送者信息失败: " + res.Error.Error())
+		return
+	}
+
+	// 构建消息响应结构
+	messageRsp := respond.GetMessageListRespond{
+		Uuid:       message.Uuid,
+		SendId:     message.SendId,
+		SendName:   sender.Nickname,
+		SendAvatar: sender.Avatar,
+		ReceiveId:  message.ReceiveId,
+		Type:       message.Type,
+		Content:    message.Content, // 密文
+		Url:        message.Url,
+		FileType:   message.FileType,
+		FileName:   message.FileName,
+		FileSize:   message.FileSize,
+		CreatedAt:  message.CreatedAt.Format("2006-01-02 15:04:05"),
+
+		// 加密相关字段
+		IsEncrypted:                message.IsEncrypted,
+		EncryptionVersion:          message.EncryptionVersion,
+		MessageType:                message.MessageType,
+		SenderIdentityKey:          message.SenderIdentityKey,
+		SenderIdentityKeyCurve25519: message.SenderIdentityKeyCurve25519,
+		SenderEphemeralKey:         message.SenderEphemeralKey,
+		UsedOneTimePreKeyId:        message.UsedOneTimePreKeyId,
+		RatchetKey:                 message.RatchetKey,
+		Counter:                    message.Counter,
+		PrevCounter:                message.PrevCounter,
+		IV:                         message.IV,
+		AuthTag:                    message.AuthTag,
+	}
+
+	jsonMessage, err := json.Marshal(messageRsp)
+	if err != nil {
+		zlog.Error("序列化消息失败: " + err.Error())
+		return
+	}
+
+	var messageBack = &chat.MessageBack{
+		Message: jsonMessage,
+		Uuid:    message.Uuid,
+	}
+
+	// 根据配置判断使用 channel 模式还是 kafka 模式
+	kafkaConfig := config.GetConfig().KafkaConfig
+	if kafkaConfig.MessageMode == "channel" {
+		// 使用 channel 模式
+		chat.ChatServer.PushMessage(messageBack, message.SendId, message.ReceiveId)
+	} else {
+		// 使用 kafka 模式
+		chat.KafkaChatServer.PushMessage(messageBack, message.SendId, message.ReceiveId)
+	}
 }
 
 // 生成随机字符串
