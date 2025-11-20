@@ -4,6 +4,7 @@
  */
 
 import nacl from 'tweetnacl';
+import { arrayBufferToBase64 } from './keyGeneration';
 
 /**
  * 执行 ECDH 密钥交换
@@ -175,8 +176,10 @@ export async function dhRatchetStep(rootKey, dhOutput, isSender) {
   const newRootKey = await kdf(combined, 'RootKey', 32);
 
   // 派生新的链密钥
-  const chainKeyInfo = isSender ? 'SendingChainKey' : 'ReceivingChainKey';
-  const newChainKey = await kdf(combined, chainKeyInfo, 32);
+  // 重要：根据 Double Ratchet 协议，当发送方执行 DH ratchet 生成 sending_chain_key 时，
+  // 接收方必须使用相同的标签生成 receiving_chain_key，否则两者不匹配。
+  // 因此，无论 isSender 为何值，都使用 'ChainKey' 标签，以确保双方链密钥一致。
+  const newChainKey = await kdf(combined, 'ChainKey', 32);
 
   return {
     newRootKey: newRootKey,
@@ -315,9 +318,22 @@ export async function performDHRatchetSend(rootKey, remoteRatchetPublicKey) {
 
   // 2. 执行 ECDH
   const dhOutput = ecdh(newRatchetKeyPair.privateKey, remoteRatchetPublicKey);
+  
+  console.log('🔐 performDHRatchetSend ECDH 详情:', {
+    new_ratchet_key_private_preview: arrayBufferToBase64(newRatchetKeyPair.privateKey).substring(0, 20),
+    new_ratchet_key_public_preview: arrayBufferToBase64(newRatchetKeyPair.publicKey).substring(0, 20),
+    remote_ratchet_key_public_preview: arrayBufferToBase64(remoteRatchetPublicKey).substring(0, 20),
+    dh_output_preview: arrayBufferToBase64(dhOutput).substring(0, 20),
+    root_key_preview: arrayBufferToBase64(rootKey).substring(0, 20),
+  });
 
   // 3. 更新根密钥和发送链密钥
   const result = await dhRatchetStep(rootKey, dhOutput, true);
+
+  console.log('🔐 performDHRatchetSend 结果:', {
+    new_root_key_preview: arrayBufferToBase64(result.newRootKey).substring(0, 20),
+    new_sending_chain_key_preview: arrayBufferToBase64(result.newChainKey).substring(0, 20),
+  });
 
   return {
     newRootKey: result.newRootKey,
@@ -340,9 +356,21 @@ export async function performDHRatchetReceive(
 ) {
   // 1. 执行 ECDH
   const dhOutput = ecdh(localRatchetPrivateKey, remoteRatchetPublicKey);
+  
+  console.log('🔐 performDHRatchetReceive ECDH 详情:', {
+    local_ratchet_key_private_preview: arrayBufferToBase64(localRatchetPrivateKey).substring(0, 20),
+    remote_ratchet_key_public_preview: arrayBufferToBase64(remoteRatchetPublicKey).substring(0, 20),
+    dh_output_preview: arrayBufferToBase64(dhOutput).substring(0, 20),
+    root_key_preview: arrayBufferToBase64(rootKey).substring(0, 20),
+  });
 
   // 2. 更新根密钥和接收链密钥
   const result = await dhRatchetStep(rootKey, dhOutput, false);
+
+  console.log('🔐 performDHRatchetReceive 结果:', {
+    new_root_key_preview: arrayBufferToBase64(result.newRootKey).substring(0, 20),
+    new_receiving_chain_key_preview: arrayBufferToBase64(result.newChainKey).substring(0, 20),
+  });
 
   return {
     newRootKey: result.newRootKey,

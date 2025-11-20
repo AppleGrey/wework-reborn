@@ -1081,14 +1081,12 @@ export default {
                 ((message.send_id == data.userInfo.uuid && message.receive_id == data.contactInfo.contact_id) ||
                  (message.send_id == data.contactInfo.contact_id && message.receive_id == data.userInfo.uuid)));
             
-            if (isCurrentChat) {
-              console.log("收到消息：", message);
-              if (data.messageList == null) {
-                data.messageList = [];
-              }
-              // 检查消息是否已存在（避免重复显示，特别是乐观更新的消息）
-              const messageExists = data.messageList.some(msg => msg.uuid === message.uuid);
-              if (!messageExists) {
+              if (isCurrentChat) {
+                console.log("收到消息：", message);
+                if (data.messageList == null) {
+                  data.messageList = [];
+                }
+                
                 // 如果是加密消息，先解密
                 let messageToAdd = message;
                 if (message.is_encrypted) {
@@ -1109,7 +1107,6 @@ export default {
                 data.messageList.push(messageToAdd);
                 scrollToBottom();
               }
-            }
             // 其他接受的消息都不显示在messageList中，而是通过切换页面或刷新页面getMessageList来获取
           } else {
             var messageAVdata = JSON.parse(message.av_data); // 后端message的该字段命名为av_data
@@ -1204,29 +1201,26 @@ export default {
                 if (data.messageList == null) {
                   data.messageList = [];
                 }
-                // 检查消息是否已存在（避免重复显示，特别是乐观更新的消息）
-                const messageExists = data.messageList.some(msg => msg.uuid === message.uuid);
-                if (!messageExists) {
-                  // 如果是加密消息，先解密
-                  let messageToAdd = message;
-                  if (message.is_encrypted) {
-                    try {
-                      console.log("🔓 开始解密 WebSocket 收到的加密消息");
-                      messageToAdd = await decryptMessage(message);
-                      console.log("✅ 消息解密成功");
-                    } catch (error) {
-                      console.error("❌ 解密消息失败:", error);
-                      // 如果解密失败，显示错误提示，但仍然添加到列表
-                      messageToAdd = {
-                        ...message,
-                        content: `[解密失败: ${error.message}]`,
-                      };
-                    }
+                
+                // 如果是加密消息，先解密
+                let messageToAdd = message;
+                if (message.is_encrypted) {
+                  try {
+                    console.log("🔓 开始解密 WebSocket 收到的加密消息");
+                    messageToAdd = await decryptMessage(message);
+                    console.log("✅ 消息解密成功");
+                  } catch (error) {
+                    console.error("❌ 解密消息失败:", error);
+                    // 如果解密失败，显示错误提示，但仍然添加到列表
+                    messageToAdd = {
+                      ...message,
+                      content: `[解密失败: ${error.message}]`,
+                    };
                   }
-                  
-                  data.messageList.push(messageToAdd);
-                  scrollToBottom();
                 }
+                
+                data.messageList.push(messageToAdd);
+                scrollToBottom();
               }
               // 其他接受的消息都不显示在messageList中，而是通过切换页面或刷新页面getMessageList来获取
             } else {
@@ -1775,6 +1769,14 @@ export default {
         }
         
         // 乐观更新：立即在聊天窗口中显示消息
+        // 注意：只有当后端返回 messageId 时才进行乐观更新，否则等待 WebSocket 推送
+        if (!messageId) {
+          console.warn("⚠️ 后端未返回 messageId，跳过乐观更新，等待 WebSocket 推送");
+          data.chatMessage = "";
+          scrollToBottom();
+          return;
+        }
+        
         const now = new Date();
         // 格式化时间为 "YYYY-MM-DD HH:mm:ss" 格式（与后端一致）
         const formatDateTime = (date) => {
@@ -1787,8 +1789,13 @@ export default {
           return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
         };
         
+        // 初始化消息列表
+        if (data.messageList == null) {
+          data.messageList = [];
+        }
+        
         const messageToDisplay = {
-          uuid: messageId || `temp_${Date.now()}`, // 使用后端返回的 message_id，如果没有则使用临时 ID
+          uuid: messageId, // 使用后端返回的真实 UUID
           send_id: data.userInfo.uuid,
           send_name: data.userInfo.nickname,
           send_avatar: data.userInfo.avatar,

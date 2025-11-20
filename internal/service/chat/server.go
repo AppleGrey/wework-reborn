@@ -530,12 +530,13 @@ func (s *Server) RemoveClient(uuid string) {
 	s.mutex.Unlock()
 }
 
-// PushMessage 推送消息给发送方和接收方（用于 HTTP API 发送消息后的推送）
+// PushMessage 推送消息给接收方（用于 HTTP API 发送消息后的推送）
+// 注意：不再推送给发送方，因为前端已经通过乐观更新显示了消息
 func (s *Server) PushMessage(messageBack *MessageBack, sendId, receiveId string) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 
-	// 推送给接收方
+	// 只推送给接收方（发送方已经通过乐观更新显示了消息）
 	if receiveClient, ok := s.Clients[receiveId]; ok {
 		receiveClient.SendBack <- messageBack
 		zlog.Info(fmt.Sprintf("已通过 WebSocket 推送消息给接收方: %s", receiveId))
@@ -543,9 +544,5 @@ func (s *Server) PushMessage(messageBack *MessageBack, sendId, receiveId string)
 		zlog.Info(fmt.Sprintf("接收方 %s 不在线，消息已保存到数据库", receiveId))
 	}
 
-	// 推送给发送方（回显）
-	if sendClient, ok := s.Clients[sendId]; ok {
-		sendClient.SendBack <- messageBack
-		zlog.Info(fmt.Sprintf("已通过 WebSocket 推送消息给发送方（回显）: %s", sendId))
-	}
+	// 不再推送给发送方，因为前端已经通过乐观更新显示了消息
 }

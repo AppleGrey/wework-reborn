@@ -264,9 +264,35 @@ export async function encryptAndSendMessage(contactId, plaintext) {
     session.remote_identity_key = new Uint8Array(session.remote_identity_key);
   }
 
-  // 2. 检查是否需要 DH 棘轮更新（每 100 条消息）
-  if (session.send_counter % 100 === 0 && session.send_counter > 0) {
-    console.log('执行 DH 棘轮更新...');
+  // 2. 检查是否需要 DH 棘轮更新
+  // 2.1. 如果 sending_chain_key 为 null（Bob 第一次发送消息），需要先执行 DH ratchet
+  if (!session.sending_chain_key && session.receiving_ratchet_key_public) {
+    console.log('🔑 首次发送消息，执行 DH ratchet 生成 sending_chain_key...');
+    console.log('🔑 DH ratchet 参数检查:', {
+      root_key_preview: arrayBufferToBase64(session.root_key).substring(0, 20),
+      receiving_ratchet_key_public_preview: arrayBufferToBase64(session.receiving_ratchet_key_public).substring(0, 20),
+      receiving_ratchet_key_public_length: session.receiving_ratchet_key_public?.length,
+    });
+    
+    const ratchetResult = await performDHRatchetSend(
+      session.root_key,
+      session.receiving_ratchet_key_public
+    );
+
+    session.root_key = ratchetResult.newRootKey;
+    session.sending_chain_key = ratchetResult.newSendingChainKey;
+    session.sending_ratchet_key_private = ratchetResult.newRatchetKeyPair.privateKey;
+    session.sending_ratchet_key_public = ratchetResult.newRatchetKeyPair.publicKey;
+    
+    console.log('✅ 首次 DH ratchet 完成:', {
+      new_root_key_preview: arrayBufferToBase64(ratchetResult.newRootKey).substring(0, 20),
+      new_sending_chain_key_preview: arrayBufferToBase64(ratchetResult.newSendingChainKey).substring(0, 20),
+      new_sending_ratchet_key_public_preview: arrayBufferToBase64(ratchetResult.newRatchetKeyPair.publicKey).substring(0, 20),
+    });
+  }
+  // 2.2. 定期 DH 棘轮更新（每 100 条消息）
+  else if (session.send_counter % 100 === 0 && session.send_counter > 0) {
+    console.log('执行定期 DH 棘轮更新...');
     const ratchetResult = await performDHRatchetSend(
       session.root_key,
       session.receiving_ratchet_key_public
@@ -278,8 +304,13 @@ export async function encryptAndSendMessage(contactId, plaintext) {
     session.sending_ratchet_key_public = ratchetResult.newRatchetKeyPair.publicKey;
   }
 
-  // 3. 对称密钥棘轮：加密消息
-  console.log('🔐 Alice 加密消息:', {
+  // 3. 检查 sending_chain_key 是否存在
+  if (!session.sending_chain_key) {
+    throw new Error('发送链密钥不存在，无法加密消息。可能需要先接收对方的消息以建立接收链密钥。');
+  }
+
+  // 4. 对称密钥棘轮：加密消息
+  console.log('🔐 加密消息:', {
     plaintext_length: plaintext.length,
     sending_chain_key_length: session.sending_chain_key?.length,
     sending_chain_key_preview: session.sending_chain_key ? arrayBufferToBase64(session.sending_chain_key).substring(0, 20) : null,
@@ -288,7 +319,7 @@ export async function encryptAndSendMessage(contactId, plaintext) {
   
   const result = await sendRatchet(session.sending_chain_key, plaintext);
   
-  console.log('✅ Alice 加密完成:', {
+  console.log('✅ 加密完成:', {
     ciphertext_bytes_length: result.encryptedMessage.ciphertext.length,
     iv_bytes_length: result.encryptedMessage.iv.length,
     auth_tag_bytes_length: result.encryptedMessage.authTag.length,
@@ -379,31 +410,66 @@ export async function receiveAndDecryptMessage(contactId, encryptedMessage) {
 
   // 2. 检查是否需要 DH 棘轮更新
   const remoteRatchetKey = base64ToArrayBuffer(encryptedMessage.ratchet_key);
-  const isNewRatchetKey =
-    session.receiving_ratchet_key_public &&  // 必须已存在 receiving_ratchet_key_public
-    !arraysEqual(session.receiving_ratchet_key_public, remoteRatchetKey);
+  const hasReceivingRatchetKey = !!session.receiving_ratchet_key_public;
+  const isNewRatchetKey = hasReceivingRatchetKey && !arraysEqual(session.receiving_ratchet_key_public, remoteRatchetKey);
 
   console.log('🔑 棘轮密钥检查:', {
     isNewRatchetKey,
-    has_receiving_ratchet_key: !!session.receiving_ratchet_key_public,
+    has_receiving_ratchet_key: hasReceivingRatchetKey,
     receiving_chain_key_length: session.receiving_chain_key?.length,
+    receiving_chain_key_exists: !!session.receiving_chain_key,
     message_type: encryptedMessage.message_type,
     is_prekey_message: encryptedMessage.message_type === 'PreKeyMessage',
   });
 
-  // 3. 检查 receiving_chain_key 是否存在
-  // 如果不存在，可能是发送方尝试解密自己发送的消息，这是不应该的
-  if (!session.receiving_chain_key) {
-    throw new Error('接收链密钥不存在：发送方不应该尝试解密自己发送的消息');
-  }
-
-  // 4. 特殊处理：PreKeyMessage 且 receiving_ratchet_key_public 为 null 时
+  // 3. 特殊处理：PreKeyMessage 且 receiving_ratchet_key_public 为 null 时
   // 这表示这是第一条消息，应该使用初始的 receivingChainKey 解密，不需要 DH 棘轮更新
-  if (encryptedMessage.message_type === 'PreKeyMessage' && !session.receiving_ratchet_key_public) {
+  if (encryptedMessage.message_type === 'PreKeyMessage' && !hasReceivingRatchetKey) {
     console.log('📌 PreKeyMessage 且 receiving_ratchet_key_public 为 null，使用初始链密钥解密');
+    // 检查 receiving_chain_key 是否存在
+    if (!session.receiving_chain_key) {
+      throw new Error('接收链密钥不存在：PreKeyMessage 需要初始接收链密钥');
+    }
     // 设置 receiving_ratchet_key_public 但不执行 DH 棘轮更新
     session.receiving_ratchet_key_public = remoteRatchetKey;
-  } else if (isNewRatchetKey) {
+  } 
+  // 4. SignalMessage 且 receiving_ratchet_key_public 为 null 时（Bob 第一次发送消息给 Alice）
+  // 这表示对方第一次发送消息，需要执行 DH ratchet 更新来生成 receiving_chain_key
+  else if (encryptedMessage.message_type === 'SignalMessage' && !hasReceivingRatchetKey && session.sending_ratchet_key_private) {
+    console.log('📌 SignalMessage 且 receiving_ratchet_key_public 为 null，执行 DH ratchet 更新...');
+    console.log('📌 DH ratchet 参数检查:', {
+      root_key_preview: arrayBufferToBase64(session.root_key).substring(0, 20),
+      sending_ratchet_key_private_exists: !!session.sending_ratchet_key_private,
+      sending_ratchet_key_private_length: session.sending_ratchet_key_private?.length,
+      remote_ratchet_key_preview: arrayBufferToBase64(remoteRatchetKey).substring(0, 20),
+      remote_ratchet_key_length: remoteRatchetKey.length,
+    });
+    
+    // 执行 DH ratchet 更新
+    const ratchetResult = await performDHRatchetReceive(
+      session.root_key,
+      session.sending_ratchet_key_private,
+      remoteRatchetKey
+    );
+
+    session.root_key = ratchetResult.newRootKey;
+    session.receiving_chain_key = ratchetResult.newReceivingChainKey;
+    session.receiving_ratchet_key_public = remoteRatchetKey;
+    session.prev_counter = session.receive_counter;
+    session.receive_counter = 0;
+    session.updated_at = Date.now();
+    
+    // 立即保存会话状态（在执行 DH ratchet 更新后）
+    await put(STORES.SESSIONS, session);
+    
+    console.log('✅ 首次 DH ratchet 更新完成:', {
+      new_root_key_preview: arrayBufferToBase64(ratchetResult.newRootKey).substring(0, 20),
+      new_receiving_chain_key_preview: arrayBufferToBase64(ratchetResult.newReceivingChainKey).substring(0, 20),
+      receive_counter_reset: true,
+    });
+  }
+  // 5. 检测到新的棘轮密钥，执行 DH 棘轮更新
+  else if (isNewRatchetKey) {
     console.log('🔄 检测到新的棘轮密钥，执行 DH 棘轮更新...');
     const oldRootKey = session.root_key;
     const oldReceivingChainKey = session.receiving_chain_key;
@@ -429,14 +495,35 @@ export async function receiveAndDecryptMessage(contactId, encryptedMessage) {
     });
   }
 
-  // 5. 处理乱序消息
-  if (encryptedMessage.counter !== session.receive_counter) {
-    console.warn('检测到乱序消息，counter:', encryptedMessage.counter);
-    // 简化处理：跳过乱序消息处理，直接解密
-    // 完整实现需要缓存跳过的消息密钥
+  // 5. 检查 receiving_chain_key 是否存在（在所有 DH ratchet 更新之后）
+  if (!session.receiving_chain_key) {
+    throw new Error('接收链密钥不存在，无法解密消息。可能需要先接收对方的消息以建立接收链密钥。');
   }
 
-  // 6. 对称密钥棘轮：解密消息
+  // 6. 处理乱序消息
+  // 如果 counter 与 receive_counter 不匹配，需要调整链密钥
+  // 注意：这里简化处理，假设 counter >= receive_counter（未来的消息）
+  // 如果 counter < receive_counter（过去的消息），则需要使用缓存的消息密钥
+  const counterDiff = encryptedMessage.counter - session.receive_counter;
+  let chainKeyToUse = session.receiving_chain_key;
+  
+  if (counterDiff !== 0) {
+    console.warn('检测到乱序消息，counter:', encryptedMessage.counter, 'receive_counter:', session.receive_counter, '差值:', counterDiff);
+    
+    if (counterDiff < 0) {
+      // counter < receive_counter，这是过去的消息，应该已经处理过
+      // 简化处理：仍然尝试解密，但可能会失败
+      console.warn('⚠️ 收到过去的消息（counter < receive_counter），尝试解密可能会失败');
+    } else if (counterDiff > 0) {
+      // counter > receive_counter，这是未来的消息，说明之前可能有消息丢失
+      // 由于 Double Ratchet 的特性，如果中间的消息丢失，我们无法解密未来的消息
+      // 因为链密钥已经基于之前的消息推进了，我们无法回到之前的状态
+      // 但是，为了兼容性，我们先尝试解密，如果失败再抛出错误
+      console.warn('⚠️ 收到未来的消息（counter > receive_counter），可能之前有消息丢失，尝试解密可能会失败');
+    }
+  }
+
+  // 7. 对称密钥棘轮：解密消息
   console.log('🔐 使用接收链密钥解密:', {
     chain_key_length: session.receiving_chain_key?.length,
     chain_key_preview: session.receiving_chain_key ? arrayBufferToBase64(session.receiving_chain_key).substring(0, 20) : null,

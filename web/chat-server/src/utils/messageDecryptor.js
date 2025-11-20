@@ -223,6 +223,7 @@ export async function decryptMessage(message) {
     });
     
     const encryptedData = {
+      message_type: message.message_type, // 添加 message_type，用于判断消息类型
       ratchet_key: message.ratchet_key,
       counter: counter,
       prev_counter: prevCounter,
