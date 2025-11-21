@@ -878,15 +878,17 @@ export default {
 .contactlist-header {
   display: flex;
   flex-direction: row;
-  margin-top: 10px;
-  margin-bottom: 10px;
+  margin-top: 12px;
+  margin-bottom: 12px;
+  padding: 0 8px;
 }
 
 .contact-search-input {
   width: 185px;
-  height: 30px;
+  height: 36px;
   margin-left: 5px;
   margin-right: 5px;
+  border-radius: 8px;
 }
 
 .contactlist-header-right {
@@ -898,31 +900,51 @@ export default {
 }
 
 .create-group-btn {
-  background-color: rgb(252, 210.9, 210.9);
+  background: #4facfe;
   cursor: pointer;
   border: none;
-  height: 100%;
-  width: 30px;
-  height: 30px;
+  height: 36px;
+  width: 36px;
   display: flex;
   justify-content: center;
   align-items: center;
-  border-radius: 10px;
+  border-radius: 8px;
+  transition: all 0.3s ease;
+}
+
+.create-group-btn:hover {
+  background: #3d8bfe;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(79, 172, 254, 0.3);
 }
 
 .create-group-icon {
-  width: 15px;
-  height: 15px;
+  width: 18px;
+  height: 18px;
+  color: #ffffff;
 }
 
 .el-menu {
-  background-color: rgb(252, 210.9, 210.9);
+  background-color: #f8f9fa;
   width: 101%;
+  border: none;
 }
 
 .el-menu-item {
-  background-color: rgb(255, 255, 255);
-  height: 45px;
+  background-color: #ffffff;
+  height: 48px;
+  border-radius: 8px;
+  margin: 4px 8px;
+  transition: all 0.2s ease;
+}
+
+.el-menu-item:hover {
+  background-color: #f3f4f6;
+}
+
+.el-menu-item.is-active {
+  background-color: #4facfe;
+  color: #ffffff;
 }
 
 .contactlist-user-title {
@@ -1045,7 +1067,9 @@ h3 {
 }
 
 .action-btn {
-  background-color: rgb(252, 210.9, 210.9);
+  background: #4facfe;
+  border: none;
+  color: #ffffff;
   border: none;
   cursor: pointer;
   justify-content: center;

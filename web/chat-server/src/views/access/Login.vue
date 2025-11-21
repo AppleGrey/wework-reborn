@@ -161,57 +161,69 @@ export default {
 <style>
 .login-wrap {
   height: 100vh;
-  background-image: url("@/assets/img/chat_server_background.jpg");
-  background-size: cover;
-  background-position: center;
-  background-repeat: no-repeat;
+  /* 简约风格：淡灰色渐变背景 */
+  background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
 }
 
 .login-window {
-  background-color: rgb(255, 255, 255, 0.7);
+  background-color: #ffffff;
   position: fixed;
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  padding: 30px 50px;
-  border-radius: 20px;
-  /*opacity: 0.7;*/
+  padding: 40px 50px;
+  border-radius: 16px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
+  width: 400px;
 }
 
 .login-item {
   text-align: center;
   margin-bottom: 20px;
-  color: #494949;
+  color: #374151;
+  font-size: 14px;
 }
 
 .login-button-container {
   display: flex;
-  justify-content: center; /* 水平居中 */
-  margin-top: 20px; /* 可选，根据需要调整按钮与输入框之间的间距 */
+  justify-content: center;
+  margin-top: 24px;
   width: 100%;
 }
 
 .login-btn,
 .login-btn:hover {
-  background-color: rgb(229, 132, 132);
+  background: #4facfe;
   border: none;
   color: #ffffff;
-  font-weight: bold;
+  font-weight: 500;
+  padding: 12px 32px;
+  border-radius: 8px;
+  width: 100%;
+  transition: all 0.3s ease;
+}
+
+.login-btn:hover {
+  background: #3d8bfe;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(79, 172, 254, 0.3);
 }
 
 .go-register-button-container {
   display: flex;
   flex-direction: row-reverse;
-  margin-top: 10px;
+  margin-top: 16px;
 }
 
 .go-register-btn,
 .go-sms-btn {
-  background-color: rgba(255, 255, 255, 0);
+  background-color: transparent;
   border: none;
   cursor: pointer;
-  color: #d65b54;
-  font-weight: bold;
+  color: #4facfe;
+  font-weight: 500;
+  font-size: 14px;
+  transition: color 0.2s ease;
   text-decoration: underline;
   text-underline-offset: 0.2em;
   margin-left: 10px;

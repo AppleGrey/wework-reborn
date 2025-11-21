@@ -331,7 +331,7 @@
                           >
                             <template #trigger>
                               <el-button
-                                style="background-color: rgb(252, 210.9, 210.9)"
+                                style="background: #4facfe; border: none; color: #ffffff;"
                                 >上传图片</el-button
                               >
                             </template>
@@ -344,7 +344,7 @@
                 <template v-slot:footer>
                   <div class="updategroupinfo-modal-footer">
                     <el-button
-                      style="background-color: rgb(252, 210.9, 210.9)"
+                      style="background: #4facfe; border: none; color: #ffffff;"
                       @click="closeUpdateGroupInfoModal"
                     >
                       完成
@@ -598,7 +598,9 @@
                         <div class="left-message-file-download">
                           <el-button
                             style="
-                              background-color: rgb(252, 210.9, 210.9);
+                              background: #4facfe;
+                              border: none;
+                              color: #ffffff;
                               margin-top: 20px;
                             "
                             size="small"
@@ -2682,13 +2684,26 @@ export default {
 }
 
 .el-menu {
-  background-color: rgb(252, 210.9, 210.9);
+  background-color: #f8f9fa;
   width: 100%;
+  border: none;
 }
 
 .el-menu-item {
-  background-color: rgb(255, 255, 255);
-  height: 45px;
+  background-color: #ffffff;
+  height: 48px;
+  border-radius: 8px;
+  margin: 4px 8px;
+  transition: all 0.2s ease;
+}
+
+.el-menu-item:hover {
+  background-color: #f3f4f6;
+}
+
+.el-menu-item.is-active {
+  background-color: #4facfe;
+  color: #ffffff;
 }
 
 .sessionlist-title {
@@ -2871,7 +2886,9 @@ h3 {
 }
 
 .right-message-content {
-  background-color: rgb(252, 210.9, 210.9);
+  background: #4facfe;
+  border: none;
+  color: #ffffff;
   color: rgb(74, 72, 72);
   display: inline-block;
   max-width: 400px;
@@ -3049,7 +3066,9 @@ h3 {
 }
 
 .action-btn {
-  background-color: rgb(252, 210.9, 210.9);
+  background: #4facfe;
+  border: none;
+  color: #ffffff;
   border: none;
   cursor: pointer;
   justify-content: center;
@@ -3086,7 +3105,9 @@ h3 {
   color: rgb(57, 57, 57);
 }
 .removegroupmembers-button {
-  background-color: rgb(252, 210.9, 210.9);
+  background: #4facfe;
+  border: none;
+  color: #ffffff;
 }
 
 .video-modal-overlay {
@@ -3146,6 +3167,8 @@ h3 {
 }
 
 .video-modal-footer-btn {
-  background-color: rgb(252, 210.9, 210.9);
+  background: #4facfe;
+  border: none;
+  color: #ffffff;
 }
 </style>
