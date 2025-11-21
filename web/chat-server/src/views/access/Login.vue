@@ -92,6 +92,15 @@ export default {
               if (masterKey) {
                 store.commit("setMasterKey", masterKey);
                 console.log("主密钥已重新派生并保存到内存（加密功能已启用）");
+                
+                // 检查 sessionStorage 中是否有主密钥（说明用户开启了"保存主密钥"开关）
+                const savedMasterKey = sessionStorage.getItem('masterKey');
+                if (savedMasterKey) {
+                  // 如果开关是打开的，更新保存的主密钥
+                  store.commit("saveMasterKeyToStorage", masterKey);
+                  console.log("✅ 已更新 sessionStorage 中的主密钥");
+                }
+                
                 ElMessage.success(response.data.message + " (端到端加密已启用)");
               } else {
                 console.log("主密钥验证失败，可能未启用加密或密码错误");
