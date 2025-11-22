@@ -251,10 +251,17 @@
 }
 
 /* 优化 el-sub-menu 样式（"联系人"、"我创建的群聊"等标题） */
+.el-sub-menu {
+    width: 100% !important;
+    overflow: hidden !important;
+    overflow-x: hidden !important;
+    overflow-y: hidden !important;
+}
+
 .el-sub-menu__title {
     background-color: #f3f4f6 !important;
-    border-radius: 8px;
-    margin: 4px 8px;
+    border-radius: 0;
+    margin: 0 !important;
     padding: 0 20px !important;
     transition: all 0.2s ease;
     color: #1f2937 !important;
@@ -262,6 +269,29 @@
     font-size: 14px !important;
     height: 40px !important;
     line-height: 40px !important;
+    width: 100% !important;
+    box-sizing: border-box;
+    border-bottom: 1px solid #e5e7eb;
+    display: flex !important;
+    align-items: center !important;
+    position: relative !important;
+    overflow: hidden !important;
+}
+
+/* 确保箭头图标在最右侧 */
+.el-sub-menu__icon-arrow,
+.el-sub-menu__title .el-icon {
+    position: absolute !important;
+    right: 90px !important;
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+    flex-shrink: 0 !important;
+}
+
+.el-sub-menu__title > span {
+    margin-left: 12px !important;
+    margin-right: 30px !important;
+    flex: 1 !important;
 }
 
 .el-sub-menu__title:hover {
@@ -273,9 +303,6 @@
     background-color: #eff6ff !important;
 }
 
-/* 优化子菜单项（联系人项如"Bob"）的缩进和样式 */
-.el-menu-item {
-    margin-left: 20px !important;
-    margin-right: 8px !important;
-}
+/* 优化子菜单项（联系人项如"Bob"）的缩进和样式 - 仅适用于联系人列表 */
+/* 已在 ContactListModal.vue 中定义，这里不再需要 */
 

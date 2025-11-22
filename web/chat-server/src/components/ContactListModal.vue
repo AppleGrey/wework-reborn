@@ -924,20 +924,45 @@ export default {
   color: #ffffff;
 }
 
+.contactlist-body,
+.contactlist-user {
+  padding: 0 !important;
+  margin: 0 !important;
+  width: 100%;
+  overflow: hidden !important;
+}
+
 .el-menu {
   background-color: #f8f9fa;
-  width: 101%;
+  width: 100% !important;
   border: none;
+  padding: 0 !important;
+  margin: 0 !important;
+  overflow: hidden !important;
+  overflow-x: hidden !important;
+  overflow-y: hidden !important;
+}
+
+.el-sub-menu {
+  width: 100% !important;
+  overflow: hidden !important;
 }
 
 .el-menu-item {
   background-color: #ffffff;
   height: 48px;
-  border-radius: 8px;
-  margin: 4px 8px;
-  margin-left: 20px !important;
+  border-radius: 0;
+  margin: 0 !important;
   transition: all 0.2s ease;
   padding-left: 12px !important;
+  padding-right: 0 !important;
+  border-bottom: 1px solid #f0f0f0;
+  width: 100% !important;
+  box-sizing: border-box;
+}
+
+.el-menu-item:last-child {
+  border-bottom: none;
 }
 
 .el-menu-item:hover {

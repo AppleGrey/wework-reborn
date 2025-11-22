@@ -21,44 +21,14 @@
             </div>
             <div class="contactlist-body">
               <div class="contactlist-user">
-                <el-menu
-                  router
-                  unique-opened
-                  @open="handleShowUserSessionList"
-                  @close="handleHideUserSessionList"
-                >
-                  <el-sub-menu index="1">
-                    <template #title>
-                      <span class="sessionlist-title">用户</span>
-                    </template>
-                  </el-sub-menu>
+                <el-menu router>
                   <el-menu-item
-                    v-for="user in userSessionList"
-                    :key="user.user_id"
-                    @click="handleToChatUser(user)"
+                    v-for="session in allSessionList"
+                    :key="session.id"
+                    @click="handleToSession(session)"
                   >
-                    <img :src="user.avatar" class="sessionlist-avatar" />
-                    {{ user.user_name }}
-                  </el-menu-item>
-                </el-menu>
-                <el-menu
-                  router
-                  unique-opened
-                  @open="handleShowGroupSessionList"
-                  @close="handleHideGroupSessionList"
-                >
-                  <el-sub-menu index="1">
-                    <template #title>
-                      <span class="sessionlist-title">群聊</span>
-                    </template>
-                  </el-sub-menu>
-                  <el-menu-item
-                    v-for="group in groupSessionList"
-                    :key="group.group_id"
-                    @click="handleToChatGroup(group)"
-                  >
-                    <img :src="group.avatar" class="sessionlist-avatar" />
-                    {{ group.group_name }}
+                    <img :src="session.avatar" class="sessionlist-avatar" />
+                    {{ session.name }}
                   </el-menu-item>
                 </el-menu>
               </div>
@@ -1022,8 +992,7 @@ export default {
       ownListReq: {
         owner_id: "",
       },
-      userSessionList: [],
-      groupSessionList: [],
+      allSessionList: [],
       sessionId: "",
       messageList: [],
       innerRef: ref < HTMLDivElement > null,
@@ -1174,6 +1143,7 @@ export default {
       try {
         /*  */
         console.log(router.currentRoute.value.params.id);
+        await loadAllSessions();
         await getChatContactInfo(router.currentRoute.value.params.id);
         await getSessionId(router.currentRoute.value.params.id);
         console.log(data.contactInfo);
@@ -1389,60 +1359,65 @@ export default {
 
     
 
-    const handleToChatUser = async (user) => {
-      router.push("/chat/" + user.user_id);
+    const handleToSession = async (session) => {
+      router.push("/chat/" + session.id);
     };
 
-    const handleToChatGroup = async (group) => {
-      router.push("/chat/" + group.group_id);
-    };
-
-    const handleShowUserSessionList = async () => {
+    const loadAllSessions = async () => {
       try {
         data.ownListReq.owner_id = data.userInfo.uuid;
-        const userSessionListRsp = await axios.post(
-          store.state.backendUrl + "/session/getUserSessionList",
-          data.ownListReq
-        );
+        
+        // 并行加载用户会话和群聊会话
+        const [userSessionListRsp, groupSessionListRsp] = await Promise.all([
+          axios.post(
+            store.state.backendUrl + "/session/getUserSessionList",
+            data.ownListReq
+          ),
+          axios.post(
+            store.state.backendUrl + "/session/getGroupSessionList",
+            data.ownListReq
+          )
+        ]);
+
+        const allSessions = [];
+
+        // 处理用户会话
         if (userSessionListRsp.data.data) {
           for (let i = 0; i < userSessionListRsp.data.data.length; i++) {
-            if (!userSessionListRsp.data.data[i].avatar.startsWith("http")) {
-              userSessionListRsp.data.data[i].avatar =
-                store.state.backendUrl + userSessionListRsp.data.data[i].avatar;
+            const user = userSessionListRsp.data.data[i];
+            if (!user.avatar.startsWith("http")) {
+              user.avatar = store.state.backendUrl + user.avatar;
             }
+            allSessions.push({
+              id: user.user_id,
+              name: user.user_name,
+              avatar: user.avatar,
+              type: 'user'
+            });
           }
         }
-        data.userSessionList = userSessionListRsp.data.data;
-      } catch (error) {
-        console.error(error);
-      }
-    };
-    const handleHideUserSessionList = () => {
-      data.userSessionList = [];
-    };
-    const handleShowGroupSessionList = async () => {
-      try {
-        data.ownListReq.owner_id = data.userInfo.uuid;
-        const groupSessionListRsp = await axios.post(
-          store.state.backendUrl + "/session/getGroupSessionList",
-          data.ownListReq
-        );
+
+        // 处理群聊会话
         if (groupSessionListRsp.data.data) {
           for (let i = 0; i < groupSessionListRsp.data.data.length; i++) {
-            if (!groupSessionListRsp.data.data[i].avatar.startsWith("http")) {
-              groupSessionListRsp.data.data[i].avatar =
-                store.state.backendUrl +
-                groupSessionListRsp.data.data[i].avatar;
+            const group = groupSessionListRsp.data.data[i];
+            if (!group.avatar.startsWith("http")) {
+              group.avatar = store.state.backendUrl + group.avatar;
             }
+            allSessions.push({
+              id: group.group_id,
+              name: group.group_name,
+              avatar: group.avatar,
+              type: 'group'
+            });
           }
         }
-        data.groupSessionList = groupSessionListRsp.data.data;
+
+        // 按创建时间排序（如果有时间字段，这里先简单按数组顺序）
+        data.allSessionList = allSessions;
       } catch (error) {
         console.error(error);
       }
-    };
-    const handleHideGroupSessionList = () => {
-      data.groupSessionList = [];
     };
     const preToDeleteSession = () => {
       try {
@@ -2610,12 +2585,8 @@ export default {
       quitGroupContactInfoModal,
       showAddGroupModal,
       quitAddGroupModal,
-      handleToChatUser,
-      handleToChatGroup,
-      handleShowUserSessionList,
-      handleShowGroupSessionList,
-      handleHideUserSessionList,
-      handleHideGroupSessionList,
+      handleToSession,
+      loadAllSessions,
       deleteSession,
       preToDeleteSession,
       preToDeleteContact,
@@ -2683,18 +2654,41 @@ export default {
   margin-right: 2px;
 }
 
+.sessionlist-container,
+.contactlist-body,
+.contactlist-user {
+  padding: 0 !important;
+  margin: 0 !important;
+  width: 100%;
+}
+
 .el-menu {
   background-color: #f8f9fa;
-  width: 100%;
+  width: 100% !important;
   border: none;
+  padding: 0 !important;
+  margin: 0 !important;
 }
 
 .el-menu-item {
   background-color: #ffffff;
   height: 48px;
-  border-radius: 8px;
-  margin: 4px 8px;
+  border-radius: 0;
+  margin: 0 !important;
+  padding-left: 8px !important;
+  padding-right: 0 !important;
   transition: all 0.2s ease;
+  border-bottom: 1px solid #f0f0f0;
+  width: 100% !important;
+  box-sizing: border-box;
+}
+
+.el-menu-item * {
+  box-sizing: border-box;
+}
+
+.el-menu-item:last-child {
+  border-bottom: none;
 }
 
 .el-menu-item:hover {
@@ -3173,3 +3167,4 @@ h3 {
   color: #ffffff;
 }
 </style>
+
