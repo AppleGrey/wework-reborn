@@ -420,18 +420,31 @@ export async function receiveAndDecryptMessage(contactId, encryptedMessage) {
     receiving_chain_key_exists: !!session.receiving_chain_key,
     message_type: encryptedMessage.message_type,
     is_prekey_message: encryptedMessage.message_type === 'PreKeyMessage',
+    receive_counter: session.receive_counter,
   });
 
-  // 3. 特殊处理：PreKeyMessage 且 receiving_ratchet_key_public 为 null 时
+  // 3. 特殊处理：PreKeyMessage 且 receive_counter === 0 时
   // 这表示这是第一条消息，应该使用初始的 receivingChainKey 解密，不需要 DH 棘轮更新
-  if (encryptedMessage.message_type === 'PreKeyMessage' && !hasReceivingRatchetKey) {
-    console.log('📌 PreKeyMessage 且 receiving_ratchet_key_public 为 null，使用初始链密钥解密');
+  // 注意：即使 receiving_ratchet_key_public 已经存在（在 acceptSession 中设置），
+  // 对于第一条 PreKeyMessage，也应该使用初始链密钥，不执行 DH 棘轮更新
+  if (encryptedMessage.message_type === 'PreKeyMessage' && session.receive_counter === 0) {
+    console.log('📌 PreKeyMessage 且 receive_counter === 0，使用初始链密钥解密（不执行 DH 棘轮更新）');
     // 检查 receiving_chain_key 是否存在
     if (!session.receiving_chain_key) {
       throw new Error('接收链密钥不存在：PreKeyMessage 需要初始接收链密钥');
     }
-    // 设置 receiving_ratchet_key_public 但不执行 DH 棘轮更新
-    session.receiving_ratchet_key_public = remoteRatchetKey;
+    // 如果 receiving_ratchet_key_public 还没有设置，则设置它（但不执行 DH 棘轮更新）
+    if (!hasReceivingRatchetKey) {
+      session.receiving_ratchet_key_public = remoteRatchetKey;
+      console.log('📌 设置 receiving_ratchet_key_public（但不执行 DH 棘轮更新）');
+    } else {
+      // 如果已经存在，验证它是否匹配
+      if (!arraysEqual(session.receiving_ratchet_key_public, remoteRatchetKey)) {
+        console.warn('⚠️ PreKeyMessage 的 ratchet_key 与已存储的不匹配，但使用初始链密钥解密');
+        // 更新为新的 ratchet_key，但不执行 DH 棘轮更新
+        session.receiving_ratchet_key_public = remoteRatchetKey;
+      }
+    }
   } 
   // 4. SignalMessage 且 receiving_ratchet_key_public 为 null 时（Bob 第一次发送消息给 Alice）
   // 这表示对方第一次发送消息，需要执行 DH ratchet 更新来生成 receiving_chain_key
@@ -468,8 +481,8 @@ export async function receiveAndDecryptMessage(contactId, encryptedMessage) {
       receive_counter_reset: true,
     });
   }
-  // 5. 检测到新的棘轮密钥，执行 DH 棘轮更新
-  else if (isNewRatchetKey) {
+  // 5. 检测到新的棘轮密钥，执行 DH 棘轮更新（仅对 SignalMessage）
+  else if (isNewRatchetKey && encryptedMessage.message_type === 'SignalMessage') {
     console.log('🔄 检测到新的棘轮密钥，执行 DH 棘轮更新...');
     const oldRootKey = session.root_key;
     const oldReceivingChainKey = session.receiving_chain_key;
