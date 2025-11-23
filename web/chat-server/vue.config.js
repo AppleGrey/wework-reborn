@@ -4,6 +4,15 @@ const { defineConfig } = require('@vue/cli-service')
 module.exports = defineConfig({
   transpileDependencies: true,
   lintOnSave: false,
+  // 配置网页标题
+  pages: {
+    index: {
+      entry: 'src/main.js',
+      template: 'public/index.html',
+      filename: 'index.html',
+      title: 'WeWork',
+    }
+  },
   // 本地开发环境 - 使用 HTTP
   devServer: {
     host: '0.0.0.0',
