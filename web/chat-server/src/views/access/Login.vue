@@ -13,7 +13,7 @@
         class="demo-dynamic"
       >
         <el-form-item
-          prop="telephone"
+          prop="account"
           label="账号"
           :rules="[
             {
@@ -23,7 +23,7 @@
             },
           ]"
         >
-          <el-input v-model="loginData.telephone" />
+          <el-input v-model="loginData.account" placeholder="请输入账号" />
         </el-form-item>
         <el-form-item
           prop="password"
@@ -36,7 +36,7 @@
             },
           ]"
         >
-          <el-input type="password" v-model="loginData.password" />
+          <el-input type="password" v-model="loginData.password" placeholder="请输入密码" />
         </el-form-item>
       </el-form>
       <div class="login-button-container">
@@ -47,7 +47,6 @@
 
       <div class="go-register-button-container">
         <button class="go-register-btn" @click="handleRegister">注册</button>
-        <button class="go-sms-btn" @click="handleSmsLogin">验证码登录</button>
       </div>
     </div>
   </div>
@@ -55,16 +54,18 @@
 
 <script>
 import { reactive, toRefs } from "vue";
-import axios from "axios";
+import axios from "@/utils/axios";
 import { useRouter } from "vue-router";
 import { ElMessage } from "element-plus";
 import { useStore } from "vuex";
+import { loginAndDeriveMasterKey } from "@/crypto";
+
 export default {
   name: "Login",
   setup() {
     const data = reactive({
       loginData: {
-        telephone: "",
+        account: "",
         password: "",
       },
     });
@@ -72,19 +73,12 @@ export default {
     const store = useStore();
     const handleLogin = async () => {
       try {
-        if (!data.loginData.telephone || !data.loginData.password) {
+        if (!data.loginData.account || !data.loginData.password) {
           ElMessage.error("请填写完整登录信息。");
           return;
         }
-        if (!checkTelephoneValid()) {
-          ElMessage.error("请输入有效的手机号码。");
-          return;
-        }
 	console.log(store.state.backendUrl, store.state.wsUrl);
-        const response = await axios.post(
-          store.state.backendUrl + "/login",
-          data.loginData
-        );
+        const response = await axios.post("/login", data.loginData);
         console.log(response);
         if (response.data.code == 200) {
           if (response.data.data.status == 1) {
@@ -92,7 +86,31 @@ export default {
             return;
           }
           try {
-            ElMessage.success(response.data.message);
+            // 尝试重新派生主密钥（如果用户启用了加密）
+            try {
+              const masterKey = await loginAndDeriveMasterKey(data.loginData.password);
+              if (masterKey) {
+                store.commit("setMasterKey", masterKey);
+                console.log("主密钥已重新派生并保存到内存（加密功能已启用）");
+                
+                // 检查 sessionStorage 中是否有主密钥（说明用户开启了"保存主密钥"开关）
+                const savedMasterKey = sessionStorage.getItem('masterKey');
+                if (savedMasterKey) {
+                  // 如果开关是打开的，更新保存的主密钥
+                  store.commit("saveMasterKeyToStorage", masterKey);
+                  console.log("✅ 已更新 sessionStorage 中的主密钥");
+                }
+                
+                ElMessage.success(response.data.message + " (端到端加密已启用)");
+              } else {
+                console.log("主密钥验证失败，可能未启用加密或密码错误");
+                ElMessage.success(response.data.message);
+              }
+            } catch (error) {
+              console.log("未找到加密密钥，使用普通模式:", error.message);
+              ElMessage.success(response.data.message);
+            }
+
             if (!response.data.data.avatar.startsWith("http")) {
               response.data.data.avatar =
                 store.state.backendUrl + response.data.data.avatar;
@@ -100,7 +118,7 @@ export default {
             store.commit("setUserInfo", response.data.data);
             // 准备创建websocket连接
             const wsUrl =
-              store.state.wsUrl + "/wss?client_id=" + response.data.data.uuid;
+              store.state.wsUrl + "/wss?client_id=" + response.data.data.uuid + "&token=" + encodeURIComponent(response.data.data.token);
             console.log(wsUrl);
             store.state.socket = new WebSocket(wsUrl);
             store.state.socket.onopen = () => {
@@ -112,8 +130,8 @@ export default {
             store.state.socket.onclose = () => {
               console.log("WebSocket连接已关闭");
             };
-            store.state.socket.onerror = () => {
-              console.log("WebSocket连接发生错误");
+            store.state.socket.onerror = (error) => {
+              console.log("WebSocket连接发生错误", error);
             };
             router.push("/chat/sessionlist");
           } catch (error) {
@@ -126,15 +144,8 @@ export default {
         ElMessage.error(error);
       }
     };
-    const checkTelephoneValid = () => {
-      const regex = /^1[3456789]\d{9}$/;
-      return regex.test(data.loginData.telephone);
-    };
     const handleRegister = () => {
       router.push("/register");
-    };
-    const handleSmsLogin = () => {
-      router.push("/smsLogin");
     };
 
     return {
@@ -142,7 +153,6 @@ export default {
       router,
       handleLogin,
       handleRegister,
-      handleSmsLogin,
     };
   },
 };
@@ -151,57 +161,69 @@ export default {
 <style>
 .login-wrap {
   height: 100vh;
-  background-image: url("@/assets/img/chat_server_background.jpg");
-  background-size: cover;
-  background-position: center;
-  background-repeat: no-repeat;
+  /* 简约风格：淡灰色渐变背景 */
+  background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
 }
 
 .login-window {
-  background-color: rgb(255, 255, 255, 0.7);
+  background-color: #ffffff;
   position: fixed;
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  padding: 30px 50px;
-  border-radius: 20px;
-  /*opacity: 0.7;*/
+  padding: 40px 50px;
+  border-radius: 16px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
+  width: 400px;
 }
 
 .login-item {
   text-align: center;
   margin-bottom: 20px;
-  color: #494949;
+  color: #374151;
+  font-size: 14px;
 }
 
 .login-button-container {
   display: flex;
-  justify-content: center; /* 水平居中 */
-  margin-top: 20px; /* 可选，根据需要调整按钮与输入框之间的间距 */
+  justify-content: center;
+  margin-top: 24px;
   width: 100%;
 }
 
 .login-btn,
 .login-btn:hover {
-  background-color: rgb(229, 132, 132);
+  background: #4facfe;
   border: none;
   color: #ffffff;
-  font-weight: bold;
+  font-weight: 500;
+  padding: 12px 32px;
+  border-radius: 8px;
+  width: 100%;
+  transition: all 0.3s ease;
+}
+
+.login-btn:hover {
+  background: #3d8bfe;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(79, 172, 254, 0.3);
 }
 
 .go-register-button-container {
   display: flex;
   flex-direction: row-reverse;
-  margin-top: 10px;
+  margin-top: 16px;
 }
 
 .go-register-btn,
 .go-sms-btn {
-  background-color: rgba(255, 255, 255, 0);
+  background-color: transparent;
   border: none;
   cursor: pointer;
-  color: #d65b54;
-  font-weight: bold;
+  color: #4facfe;
+  font-weight: 500;
+  font-size: 14px;
+  transition: color 0.2s ease;
   text-decoration: underline;
   text-underline-offset: 0.2em;
   margin-left: 10px;

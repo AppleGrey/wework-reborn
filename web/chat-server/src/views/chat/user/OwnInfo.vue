@@ -129,7 +129,7 @@
 <script>
 import { reactive, toRefs, onMounted, ref } from "vue";
 import { useStore } from "vuex";
-import axios from "axios";
+import axios from "@/utils/axios";
 import { useRouter } from "vue-router";
 import Modal from "@/components/Modal.vue";
 import { checkEmailValid } from "@/assets/js/valid.js";
@@ -376,12 +376,25 @@ h2 {
 }
 
 .el-menu {
-  background-color: rgb(252, 210.9, 210.9);
+  background-color: #f8f9fa;
   width: 101%;
+  border: none;
 }
 
 .el-menu-item {
-  background-color: rgb(255, 255, 255);
-  height: 45px;
+  background-color: #ffffff;
+  height: 48px;
+  border-radius: 8px;
+  margin: 4px 8px;
+  transition: all 0.2s ease;
+}
+
+.el-menu-item:hover {
+  background-color: #f3f4f6;
+}
+
+.el-menu-item.is-active {
+  background-color: #4facfe;
+  color: #ffffff;
 }
 </style>

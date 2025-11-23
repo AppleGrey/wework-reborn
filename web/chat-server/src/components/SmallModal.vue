@@ -41,7 +41,7 @@ export default {
   height: 300px;
   border-radius: 20px;
   width: 350px;
-  box-shadow: 0 2px 15px rgb(195, 8, 8);
+  box-shadow: 0 2px 15px rgba(0, 0, 0, 0.2);
   display: flex;
   flex-direction: column;
   justify-content: center;

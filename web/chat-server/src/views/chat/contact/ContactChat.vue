@@ -21,44 +21,14 @@
             </div>
             <div class="contactlist-body">
               <div class="contactlist-user">
-                <el-menu
-                  router
-                  unique-opened
-                  @open="handleShowUserSessionList"
-                  @close="handleHideUserSessionList"
-                >
-                  <el-sub-menu index="1">
-                    <template #title>
-                      <span class="sessionlist-title">用户</span>
-                    </template>
-                  </el-sub-menu>
+                <el-menu router>
                   <el-menu-item
-                    v-for="user in userSessionList"
-                    :key="user.user_id"
-                    @click="handleToChatUser(user)"
+                    v-for="session in allSessionList"
+                    :key="session.id"
+                    @click="handleToSession(session)"
                   >
-                    <img :src="user.avatar" class="sessionlist-avatar" />
-                    {{ user.user_name }}
-                  </el-menu-item>
-                </el-menu>
-                <el-menu
-                  router
-                  unique-opened
-                  @open="handleShowGroupSessionList"
-                  @close="handleHideGroupSessionList"
-                >
-                  <el-sub-menu index="1">
-                    <template #title>
-                      <span class="sessionlist-title">群聊</span>
-                    </template>
-                  </el-sub-menu>
-                  <el-menu-item
-                    v-for="group in groupSessionList"
-                    :key="group.group_id"
-                    @click="handleToChatGroup(group)"
-                  >
-                    <img :src="group.avatar" class="sessionlist-avatar" />
-                    {{ group.group_name }}
+                    <img :src="session.avatar" class="sessionlist-avatar" />
+                    {{ session.name }}
                   </el-menu-item>
                 </el-menu>
               </div>
@@ -331,7 +301,7 @@
                           >
                             <template #trigger>
                               <el-button
-                                style="background-color: rgb(252, 210.9, 210.9)"
+                                style="background: #4facfe; border: none; color: #ffffff;"
                                 >上传图片</el-button
                               >
                             </template>
@@ -344,7 +314,7 @@
                 <template v-slot:footer>
                   <div class="updategroupinfo-modal-footer">
                     <el-button
-                      style="background-color: rgb(252, 210.9, 210.9)"
+                      style="background: #4facfe; border: none; color: #ffffff;"
                       @click="closeUpdateGroupInfoModal"
                     >
                       完成
@@ -549,6 +519,7 @@
                       </div>
 
                       <div class="left-message-content">
+                        <span v-if="messageItem.is_encrypted" style="color: #67c23a; font-size: 12px; margin-right: 4px;">🔒</span>
                         {{ messageItem.content }}
                       </div>
                     </div>
@@ -597,7 +568,9 @@
                         <div class="left-message-file-download">
                           <el-button
                             style="
-                              background-color: rgb(252, 210.9, 210.9);
+                              background: #4facfe;
+                              border: none;
+                              color: #ffffff;
                               margin-top: 20px;
                             "
                             size="small"
@@ -650,6 +623,7 @@
                         </div>
                         <div style="display: flex; flex-direction: row-reverse">
                           <div class="right-message-content">
+                            <span v-if="messageItem.is_encrypted" style="color: #67c23a; font-size: 12px; margin-right: 4px;">🔒</span>
                             {{ messageItem.content }}
                           </div>
                         </div>
@@ -944,12 +918,19 @@
 import { reactive, toRefs, onMounted, ref, nextTick } from "vue";
 import { useRouter, onBeforeRouteUpdate } from "vue-router";
 import { useStore } from "vuex";
-import axios from "axios";
+import axios from "@/utils/axios";
 import Modal from "@/components/Modal.vue";
 import SmallModal from "@/components/SmallModal.vue";
 import NavigationModal from "@/components/NavigationModal.vue";
 import { ElMessage, ElMessageBox, ElScrollbar } from "element-plus";
 import { ElNotification } from "element-plus";
+import {
+  hasSession,
+  createSession,
+  encryptAndSendMessage,
+  receiveAndDecryptMessage,
+} from "@/crypto";
+import { decryptMessageList, decryptMessage } from "@/utils/messageDecryptor";
 export default {
   name: "ContactChat",
   components: {
@@ -1011,8 +992,7 @@ export default {
       ownListReq: {
         owner_id: "",
       },
-      userSessionList: [],
-      groupSessionList: [],
+      allSessionList: [],
       sessionId: "",
       messageList: [],
       innerRef: ref < HTMLDivElement > null,
@@ -1057,30 +1037,51 @@ export default {
         await getGroupMessageList();
       }
       console.log(data.sessionId);
-      store.state.socket.onmessage = (jsonMessage) => {
-        const message = JSON.parse(jsonMessage.data);
-        if (message.type != 3) {
-          if (
-            // 群聊过来的消息，且当前会话是该群聊
-            (message.receive_id[0] == "G" &&
-              message.receive_id == data.contactInfo.contact_id) ||
-            // 其他用户过来的消息，且当前会话是该用户
-            (message.receive_id[0] == "U" &&
-              message.receive_id == data.userInfo.uuid) ||
-            // 自己发送的消息
-            message.send_id == data.userInfo.uuid
-          ) {
-            console.log("收到消息：", message);
-            if (data.messageList == null) {
-              data.messageList = [];
-            }
-            data.messageList.push(message);
-            scrollToBottom();
-          }
-          // 其他接受的消息都不显示在messageList中，而是通过切换页面或刷新页面getMessageList来获取
-        } else {
-          var messageAVdata = JSON.parse(message.av_data); // 后端message的该字段命名为av_data
-          if (messageAVdata.messageId === "CURRENT_PEERS") {
+      // 设置 WebSocket 消息处理器（复用原有机制，添加解密支持）
+      store.state.socket.onmessage = async (jsonMessage) => {
+        try {
+          const message = JSON.parse(jsonMessage.data);
+          if (message.type != 3) {
+            // 检查消息是否属于当前聊天窗口
+            const isGroupChat = data.contactInfo.contact_id && data.contactInfo.contact_id[0] == "G";
+            const isCurrentChat = 
+              // 群聊：消息的接收方是当前群聊
+              (isGroupChat && message.receive_id == data.contactInfo.contact_id) ||
+              // 单聊：消息是在当前用户和联系人之间发送的
+              (!isGroupChat && 
+                ((message.send_id == data.userInfo.uuid && message.receive_id == data.contactInfo.contact_id) ||
+                 (message.send_id == data.contactInfo.contact_id && message.receive_id == data.userInfo.uuid)));
+            
+              if (isCurrentChat) {
+                console.log("收到消息：", message);
+                if (data.messageList == null) {
+                  data.messageList = [];
+                }
+                
+                // 如果是加密消息，先解密
+                let messageToAdd = message;
+                if (message.is_encrypted) {
+                  try {
+                    console.log("🔓 开始解密 WebSocket 收到的加密消息");
+                    messageToAdd = await decryptMessage(message);
+                    console.log("✅ 消息解密成功");
+                  } catch (error) {
+                    console.error("❌ 解密消息失败:", error);
+                    // 如果解密失败，显示错误提示，但仍然添加到列表
+                    messageToAdd = {
+                      ...message,
+                      content: `[解密失败: ${error.message}]`,
+                    };
+                  }
+                }
+                
+                data.messageList.push(messageToAdd);
+                scrollToBottom();
+              }
+            // 其他接受的消息都不显示在messageList中，而是通过切换页面或刷新页面getMessageList来获取
+          } else {
+            var messageAVdata = JSON.parse(message.av_data); // 后端message的该字段命名为av_data
+            if (messageAVdata.messageId === "CURRENT_PEERS") {
             console.log(
               "获取CURRENT_PEERS当前在线用户列表，curContactList:",
               messageAVdata.messageData.curContactList
@@ -1129,16 +1130,20 @@ export default {
           }
           data.messageList.push(message);
           scrollToBottom();
+          }
+        } catch (error) {
+          console.error("处理消息出错:", error);
         }
       };
       scrollToBottom();
-      next();
+        next();
     });
     // 这是刚渲染/chat/:id页面的时候会调用
     onMounted(async () => {
       try {
         /*  */
         console.log(router.currentRoute.value.params.id);
+        await loadAllSessions();
         await getChatContactInfo(router.currentRoute.value.params.id);
         await getSessionId(router.currentRoute.value.params.id);
         console.log(data.contactInfo);
@@ -1148,30 +1153,51 @@ export default {
           await getGroupMessageList();
         }
         console.log(data.sessionId);
-        store.state.socket.onmessage = (jsonMessage) => {
-          const message = JSON.parse(jsonMessage.data);
-          if (message.type != 3) {
-            if (
-              // 群聊过来的消息，且当前会话是该群聊
-              (message.receive_id[0] == "G" &&
-                message.receive_id == data.contactInfo.contact_id) ||
-              // 其他用户过来的消息，且当前会话是该用户
-              (message.receive_id[0] == "U" &&
-                message.receive_id == data.userInfo.uuid) ||
-              // 自己发送的消息
-              message.send_id == data.userInfo.uuid
-            ) {
-              console.log("收到消息：", message);
-              if (data.messageList == null) {
-                data.messageList = [];
+        // 设置 WebSocket 消息处理器（复用原有机制，添加解密支持）
+        store.state.socket.onmessage = async (jsonMessage) => {
+          try {
+            const message = JSON.parse(jsonMessage.data);
+            if (message.type != 3) {
+              // 检查消息是否属于当前聊天窗口
+              const isGroupChat = data.contactInfo.contact_id && data.contactInfo.contact_id[0] == "G";
+              const isCurrentChat = 
+                // 群聊：消息的接收方是当前群聊
+                (isGroupChat && message.receive_id == data.contactInfo.contact_id) ||
+                // 单聊：消息是在当前用户和联系人之间发送的
+                (!isGroupChat && 
+                  ((message.send_id == data.userInfo.uuid && message.receive_id == data.contactInfo.contact_id) ||
+                   (message.send_id == data.contactInfo.contact_id && message.receive_id == data.userInfo.uuid)));
+              
+              if (isCurrentChat) {
+                console.log("收到消息：", message);
+                if (data.messageList == null) {
+                  data.messageList = [];
+                }
+                
+                // 如果是加密消息，先解密
+                let messageToAdd = message;
+                if (message.is_encrypted) {
+                  try {
+                    console.log("🔓 开始解密 WebSocket 收到的加密消息");
+                    messageToAdd = await decryptMessage(message);
+                    console.log("✅ 消息解密成功");
+                  } catch (error) {
+                    console.error("❌ 解密消息失败:", error);
+                    // 如果解密失败，显示错误提示，但仍然添加到列表
+                    messageToAdd = {
+                      ...message,
+                      content: `[解密失败: ${error.message}]`,
+                    };
+                  }
+                }
+                
+                data.messageList.push(messageToAdd);
+                scrollToBottom();
               }
-              data.messageList.push(message);
-              scrollToBottom();
-            }
-            // 其他接受的消息都不显示在messageList中，而是通过切换页面或刷新页面getMessageList来获取
-          } else {
-            var messageAVdata = JSON.parse(message.av_data); // 后端message的该字段命名为av_data
-            if (messageAVdata.messageId === "CURRENT_PEERS") {
+              // 其他接受的消息都不显示在messageList中，而是通过切换页面或刷新页面getMessageList来获取
+            } else {
+              var messageAVdata = JSON.parse(message.av_data); // 后端message的该字段命名为av_data
+              if (messageAVdata.messageId === "CURRENT_PEERS") {
               console.log(
                 "获取CURRENT_PEERS当前在线用户列表，curContactList:",
                 messageAVdata.messageData.curContactList
@@ -1215,15 +1241,18 @@ export default {
                 console.log("不支持的proxy类型");
               }
             }
-            console.log("收到消息：", message);
-            if (data.messageList == null) {
-              data.messageList = [];
-            }
-            data.messageList.push(message);
-            scrollToBottom();
+              console.log("收到消息：", message);
+              if (data.messageList == null) {
+                data.messageList = [];
+              }
+              data.messageList.push(message);
+              scrollToBottom();
           }
-        };
-        scrollToBottom();
+        } catch (error) {
+          console.error("处理消息出错:", error);
+        }
+      };
+      scrollToBottom();
       } catch (error) {
         console.error(error);
       }
@@ -1330,60 +1359,65 @@ export default {
 
     
 
-    const handleToChatUser = async (user) => {
-      router.push("/chat/" + user.user_id);
+    const handleToSession = async (session) => {
+      router.push("/chat/" + session.id);
     };
 
-    const handleToChatGroup = async (group) => {
-      router.push("/chat/" + group.group_id);
-    };
-
-    const handleShowUserSessionList = async () => {
+    const loadAllSessions = async () => {
       try {
         data.ownListReq.owner_id = data.userInfo.uuid;
-        const userSessionListRsp = await axios.post(
-          store.state.backendUrl + "/session/getUserSessionList",
-          data.ownListReq
-        );
+        
+        // 并行加载用户会话和群聊会话
+        const [userSessionListRsp, groupSessionListRsp] = await Promise.all([
+          axios.post(
+            store.state.backendUrl + "/session/getUserSessionList",
+            data.ownListReq
+          ),
+          axios.post(
+            store.state.backendUrl + "/session/getGroupSessionList",
+            data.ownListReq
+          )
+        ]);
+
+        const allSessions = [];
+
+        // 处理用户会话
         if (userSessionListRsp.data.data) {
           for (let i = 0; i < userSessionListRsp.data.data.length; i++) {
-            if (!userSessionListRsp.data.data[i].avatar.startsWith("http")) {
-              userSessionListRsp.data.data[i].avatar =
-                store.state.backendUrl + userSessionListRsp.data.data[i].avatar;
+            const user = userSessionListRsp.data.data[i];
+            if (!user.avatar.startsWith("http")) {
+              user.avatar = store.state.backendUrl + user.avatar;
             }
+            allSessions.push({
+              id: user.user_id,
+              name: user.user_name,
+              avatar: user.avatar,
+              type: 'user'
+            });
           }
         }
-        data.userSessionList = userSessionListRsp.data.data;
-      } catch (error) {
-        console.error(error);
-      }
-    };
-    const handleHideUserSessionList = () => {
-      data.userSessionList = [];
-    };
-    const handleShowGroupSessionList = async () => {
-      try {
-        data.ownListReq.owner_id = data.userInfo.uuid;
-        const groupSessionListRsp = await axios.post(
-          store.state.backendUrl + "/session/getGroupSessionList",
-          data.ownListReq
-        );
+
+        // 处理群聊会话
         if (groupSessionListRsp.data.data) {
           for (let i = 0; i < groupSessionListRsp.data.data.length; i++) {
-            if (!groupSessionListRsp.data.data[i].avatar.startsWith("http")) {
-              groupSessionListRsp.data.data[i].avatar =
-                store.state.backendUrl +
-                groupSessionListRsp.data.data[i].avatar;
+            const group = groupSessionListRsp.data.data[i];
+            if (!group.avatar.startsWith("http")) {
+              group.avatar = store.state.backendUrl + group.avatar;
             }
+            allSessions.push({
+              id: group.group_id,
+              name: group.group_name,
+              avatar: group.avatar,
+              type: 'group'
+            });
           }
         }
-        data.groupSessionList = groupSessionListRsp.data.data;
+
+        // 按创建时间排序（如果有时间字段，这里先简单按数组顺序）
+        data.allSessionList = allSessions;
       } catch (error) {
         console.error(error);
       }
-    };
-    const handleHideGroupSessionList = () => {
-      data.groupSessionList = [];
     };
     const preToDeleteSession = () => {
       try {
@@ -1505,7 +1539,52 @@ export default {
       }
       router.push("/chat/sessionlist");
     };
-    const sendMessage = () => {
+    const sendMessage = async () => {
+      // 检查消息内容
+      if (!data.chatMessage || data.chatMessage.trim() === "") {
+        console.log("消息内容为空，不发送");
+        return;
+      }
+
+      // 检查 WebSocket 连接状态
+      if (!store.state.socket) {
+        console.error("WebSocket 未连接");
+        ElMessage.error("WebSocket 未连接，请刷新页面");
+        return;
+      }
+
+      if (store.state.socket.readyState !== WebSocket.OPEN) {
+        console.error("WebSocket 连接状态异常：", store.state.socket.readyState);
+        ElMessage.error("WebSocket 连接已断开，请刷新页面");
+        return;
+      }
+
+      // 检查必要的数据
+      if (!data.sessionId || !data.contactInfo.contact_id) {
+        console.error("会话信息不完整", {
+          sessionId: data.sessionId,
+          contactId: data.contactInfo.contact_id
+        });
+        ElMessage.error("会话信息不完整");
+        return;
+      }
+
+      console.log("准备发送消息：", data.chatMessage);
+
+      // 检查是否启用了加密
+      if (store.state.masterKey && data.contactInfo.contact_id.startsWith('U')) {
+        // 启用了加密，且是单聊（不是群聊）
+        try {
+          await sendEncryptedMessage();
+          return;
+        } catch (error) {
+          console.error("加密消息发送失败：", error);
+          ElMessage.error("加密消息发送失败：" + error.message);
+          return;
+        }
+      }
+
+      // 未启用加密，使用原有的明文发送
       const chatMessageRequest = {
         session_id: data.sessionId,
         type: 0,
@@ -1519,9 +1598,220 @@ export default {
         file_name: "",
         file_type: "",
       };
-      store.state.socket.send(JSON.stringify(chatMessageRequest));
-      data.chatMessage = "";
-      scrollToBottom();
+
+      try {
+        console.log("发送消息请求（明文）：", chatMessageRequest);
+        store.state.socket.send(JSON.stringify(chatMessageRequest));
+        console.log("消息已发送");
+        data.chatMessage = "";
+        scrollToBottom();
+      } catch (error) {
+        console.error("发送消息失败：", error);
+        ElMessage.error("发送消息失败：" + error.message);
+      }
+    };
+
+    // 发送加密消息
+    const sendEncryptedMessage = async () => {
+      const contactId = data.contactInfo.contact_id;
+      const plaintext = data.chatMessage;
+
+      console.log("🔒 准备发送加密消息...");
+
+      // 1. 检查会话是否存在
+      const sessionExists = await hasSession(contactId);
+      let isPreKeyMessage = false;
+      let initData = null;
+
+      if (!sessionExists) {
+        console.log("会话不存在，正在建立加密会话...");
+        ElMessage.info("正在建立安全连接...");
+
+        // 2. 获取对方的公钥束
+        try {
+          const response = await axios.get("/crypto/getPublicKeyBundle", {
+            params: { user_id: contactId },
+          });
+
+          if (response.data.code !== 200) {
+            throw new Error(response.data.message || "获取公钥束失败");
+          }
+
+          const publicKeyBundle = response.data.data;
+          console.log("获取到公钥束:", publicKeyBundle);
+
+          // 3. 建立会话
+          initData = await createSession(
+            store.state.masterKey,
+            contactId,
+            publicKeyBundle
+          );
+          isPreKeyMessage = true;
+          console.log("✅ 加密会话已建立");
+        } catch (error) {
+          console.error("建立加密会话失败:", error);
+          if (error.message.includes("未启用加密功能")) {
+            ElMessage.warning("对方未启用加密功能，将发送明文消息");
+            // Fallback 到明文发送（调用原有逻辑）
+            // 这里简化处理，抛出错误让用户重试
+          }
+          throw error;
+        }
+      }
+
+      // 4. 加密消息
+      const encryptedMessage = await encryptAndSendMessage(contactId, plaintext);
+      console.log("消息已加密:", encryptedMessage);
+
+      // 5. 构造请求数据
+      const requestData = {
+        session_id: data.sessionId,
+        receiver_id: contactId,
+        message_type: isPreKeyMessage ? "PreKeyMessage" : "SignalMessage",
+        ...encryptedMessage,
+      };
+
+      // 如果是 PreKeyMessage，添加初始化数据
+      if (isPreKeyMessage && initData) {
+        requestData.sender_identity_key = initData.identity_key;
+        requestData.sender_identity_key_curve25519 = initData.identity_key_curve25519; // Curve25519 格式的身份公钥
+        requestData.sender_ephemeral_key = initData.ephemeral_key;
+        // 确保 used_one_time_pre_key_id 被正确传递（即使是 null 也要传递）
+        requestData.used_one_time_pre_key_id = initData.used_one_time_pre_key_id !== undefined 
+          ? initData.used_one_time_pre_key_id 
+          : initData.usedOneTimePreKeyId; // 兼容两种命名
+        console.log('📤 PreKeyMessage 初始化数据:', {
+          has_identity_key: !!requestData.sender_identity_key,
+          has_identity_key_curve25519: !!requestData.sender_identity_key_curve25519,
+          has_ephemeral_key: !!requestData.sender_ephemeral_key,
+          used_one_time_pre_key_id: requestData.used_one_time_pre_key_id,
+        });
+      }
+
+      // 6. 发送到服务器
+      console.log("发送加密消息到服务器...");
+      console.log("📤 发送的请求数据:", {
+        ciphertext_length: requestData.ciphertext?.length,
+        ciphertext_preview: requestData.ciphertext?.substring(0, 20),
+        iv_length: requestData.iv?.length,
+        auth_tag_length: requestData.auth_tag?.length,
+        ratchet_key_length: requestData.ratchet_key?.length,
+      });
+      const response = await axios.post("/message/sendEncryptedMessage", requestData);
+
+      if (response.data.code === 200) {
+        console.log("✅ 加密消息发送成功");
+        
+        // 保存发送方的明文到 IndexedDB（仅发送方可见，用于历史记录）
+        // 注意：后端可能返回带尾随空格的 UUID，需要 trim
+        let messageId = response.data.data?.message_id;
+        if (messageId) {
+          messageId = messageId.trim(); // 去除首尾空格
+        }
+        console.log('📝 尝试保存发送方明文，messageId:', messageId, 'plaintext:', plaintext);
+        if (messageId && store.state.masterKey) {
+          try {
+            const { put, STORES } = await import('@/crypto/cryptoStore');
+            // 使用消息 ID 作为 key，存储明文
+            const sentMessageData = {
+              message_id: messageId,
+              plaintext: plaintext,
+              contact_id: contactId,
+              created_at: Date.now(),
+            };
+            await put(STORES.SENT_MESSAGES, sentMessageData);
+            console.log('✅ 已保存发送方的明文到 IndexedDB:', {
+              message_id: messageId,
+              plaintext_length: plaintext.length,
+              plaintext_preview: plaintext.substring(0, 20),
+            });
+            
+            // 验证保存是否成功
+            const { get } = await import('@/crypto/cryptoStore');
+            const saved = await get(STORES.SENT_MESSAGES, messageId);
+            if (saved) {
+              console.log('✅ 验证：IndexedDB 中已存在该消息的明文');
+            } else {
+              console.warn('⚠️ 验证失败：IndexedDB 中未找到该消息的明文');
+            }
+          } catch (error) {
+            console.error('❌ 保存发送方明文失败:', error);
+            // 不影响消息发送，只是历史记录可能无法显示
+          }
+        } else {
+          console.warn('⚠️ 无法保存发送方明文:', {
+            has_messageId: !!messageId,
+            has_masterKey: !!store.state.masterKey,
+          });
+        }
+        
+        // 乐观更新：立即在聊天窗口中显示消息
+        // 注意：只有当后端返回 messageId 时才进行乐观更新，否则等待 WebSocket 推送
+        if (!messageId) {
+          console.warn("⚠️ 后端未返回 messageId，跳过乐观更新，等待 WebSocket 推送");
+          data.chatMessage = "";
+          scrollToBottom();
+          return;
+        }
+        
+        const now = new Date();
+        // 格式化时间为 "YYYY-MM-DD HH:mm:ss" 格式（与后端一致）
+        const formatDateTime = (date) => {
+          const year = date.getFullYear();
+          const month = String(date.getMonth() + 1).padStart(2, '0');
+          const day = String(date.getDate()).padStart(2, '0');
+          const hours = String(date.getHours()).padStart(2, '0');
+          const minutes = String(date.getMinutes()).padStart(2, '0');
+          const seconds = String(date.getSeconds()).padStart(2, '0');
+          return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+        };
+        
+        // 初始化消息列表
+        if (data.messageList == null) {
+          data.messageList = [];
+        }
+        
+        const messageToDisplay = {
+          uuid: messageId, // 使用后端返回的真实 UUID
+          send_id: data.userInfo.uuid,
+          send_name: data.userInfo.nickname,
+          send_avatar: data.userInfo.avatar,
+          receive_id: contactId,
+          type: 0, // 文本消息
+          content: plaintext, // 显示明文（发送方看到的是明文）
+          url: "",
+          file_type: "",
+          file_name: "",
+          file_size: "",
+          created_at: formatDateTime(now),
+          // 加密相关字段
+          is_encrypted: true,
+          encryption_version: 1,
+          message_type: requestData.message_type,
+          sender_identity_key: requestData.sender_identity_key,
+          sender_identity_key_curve25519: requestData.sender_identity_key_curve25519,
+          sender_ephemeral_key: requestData.sender_ephemeral_key,
+          used_one_time_pre_key_id: requestData.used_one_time_pre_key_id,
+          ratchet_key: requestData.ratchet_key,
+          counter: requestData.counter,
+          prev_counter: requestData.prev_counter,
+          iv: requestData.iv,
+          auth_tag: requestData.auth_tag,
+        };
+        
+        // 立即添加到消息列表（乐观更新）
+        if (data.messageList == null) {
+          data.messageList = [];
+        }
+        data.messageList.push(messageToDisplay);
+        console.log("✅ 已乐观更新消息到聊天窗口，消息ID:", messageId);
+        
+        // 清空输入框并滚动到底部
+        data.chatMessage = "";
+        scrollToBottom();
+      } else {
+        throw new Error(response.data.message || "发送失败");
+      }
     };
 
     const sendFileMessage = async (fileUrl) => {
@@ -1571,7 +1861,7 @@ export default {
         };
         console.log(req);
         const rsp = await axios.post(
-          store.state.backendUrl + "/message/getMessageList",
+          "/message/getMessageList",
           req
         );
         if (rsp.data.data) {
@@ -1580,6 +1870,15 @@ export default {
               rsp.data.data[i].send_avatar =
                 store.state.backendUrl + rsp.data.data[i].send_avatar;
             }
+          }
+
+          // 解密加密消息
+          try {
+            rsp.data.data = await decryptMessageList(rsp.data.data);
+            console.log('消息列表解密完成');
+          } catch (error) {
+            console.error('消息解密失败:', error);
+            // 不阻断，继续显示消息（可能是明文或解密失败的提示）
           }
         }
         data.messageList = rsp.data.data;
@@ -1618,9 +1917,18 @@ export default {
 
     const scrollToBottom = () => {
       nextTick(() => {
-        const scrollHeight = data.innerRef.scrollHeight;
-        console.log(scrollHeight);
-        data.scrollbarRef.setScrollTop(scrollHeight);
+        // 检查 DOM 元素是否存在
+        if (!data.innerRef || !data.scrollbarRef) {
+          console.warn("scrollToBottom: DOM 元素未准备好");
+          return;
+        }
+        try {
+          const scrollHeight = data.innerRef.scrollHeight;
+          console.log(scrollHeight);
+          data.scrollbarRef.setScrollTop(scrollHeight);
+        } catch (error) {
+          console.warn("scrollToBottom 失败:", error);
+        }
       });
     };
 
@@ -2277,12 +2585,8 @@ export default {
       quitGroupContactInfoModal,
       showAddGroupModal,
       quitAddGroupModal,
-      handleToChatUser,
-      handleToChatGroup,
-      handleShowUserSessionList,
-      handleShowGroupSessionList,
-      handleHideUserSessionList,
-      handleHideGroupSessionList,
+      handleToSession,
+      loadAllSessions,
       deleteSession,
       preToDeleteSession,
       preToDeleteContact,
@@ -2350,14 +2654,50 @@ export default {
   margin-right: 2px;
 }
 
-.el-menu {
-  background-color: rgb(252, 210.9, 210.9);
+.sessionlist-container,
+.contactlist-body,
+.contactlist-user {
+  padding: 0 !important;
+  margin: 0 !important;
   width: 100%;
 }
 
+.el-menu {
+  background-color: #f8f9fa;
+  width: 100% !important;
+  border: none;
+  padding: 0 !important;
+  margin: 0 !important;
+}
+
 .el-menu-item {
-  background-color: rgb(255, 255, 255);
-  height: 45px;
+  background-color: #ffffff;
+  height: 48px;
+  border-radius: 0;
+  margin: 0 !important;
+  padding-left: 8px !important;
+  padding-right: 0 !important;
+  transition: all 0.2s ease;
+  border-bottom: 1px solid #f0f0f0;
+  width: 100% !important;
+  box-sizing: border-box;
+}
+
+.el-menu-item * {
+  box-sizing: border-box;
+}
+
+.el-menu-item:last-child {
+  border-bottom: none;
+}
+
+.el-menu-item:hover {
+  background-color: #f3f4f6;
+}
+
+.el-menu-item.is-active {
+  background-color: #4facfe;
+  color: #ffffff;
 }
 
 .sessionlist-title {
@@ -2526,7 +2866,7 @@ h3 {
 }
 
 .left-message-content {
-  background-color: rgb(239, 255, 174);
+  background-color: #ffffff;
   color: rgb(74, 72, 72);
   display: inline-block;
   max-width: 400px;
@@ -2536,11 +2876,14 @@ h3 {
   padding: 3px;
   padding-right: 5px;
   font-size: 14px;
-  box-shadow: 0px 0px 5px 0px rgba(0, 0, 0, 0.2);
+  border: 1px solid #e5e7eb;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
 }
 
 .right-message-content {
-  background-color: rgb(252, 210.9, 210.9);
+  background: #4facfe;
+  border: none;
+  color: #ffffff;
   color: rgb(74, 72, 72);
   display: inline-block;
   max-width: 400px;
@@ -2718,7 +3061,9 @@ h3 {
 }
 
 .action-btn {
-  background-color: rgb(252, 210.9, 210.9);
+  background: #4facfe;
+  border: none;
+  color: #ffffff;
   border: none;
   cursor: pointer;
   justify-content: center;
@@ -2755,7 +3100,9 @@ h3 {
   color: rgb(57, 57, 57);
 }
 .removegroupmembers-button {
-  background-color: rgb(252, 210.9, 210.9);
+  background: #4facfe;
+  border: none;
+  color: #ffffff;
 }
 
 .video-modal-overlay {
@@ -2815,6 +3162,9 @@ h3 {
 }
 
 .video-modal-footer-btn {
-  background-color: rgb(252, 210.9, 210.9);
+  background: #4facfe;
+  border: none;
+  color: #ffffff;
 }
 </style>
+

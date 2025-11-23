@@ -372,7 +372,7 @@
 import { reactive, toRefs, onMounted } from "vue";
 import { useRouter } from "vue-router";
 import { useStore } from "vuex";
-import axios from "axios";
+import axios from "@/utils/axios";
 import { ElMessage } from "element-plus";
 import Modal from "./Modal.vue";
 import SmallModal from "./SmallModal.vue";
@@ -878,15 +878,17 @@ export default {
 .contactlist-header {
   display: flex;
   flex-direction: row;
-  margin-top: 10px;
-  margin-bottom: 10px;
+  margin-top: 12px;
+  margin-bottom: 12px;
+  padding: 0 8px;
 }
 
 .contact-search-input {
   width: 185px;
-  height: 30px;
+  height: 36px;
   margin-left: 5px;
   margin-right: 5px;
+  border-radius: 8px;
 }
 
 .contactlist-header-right {
@@ -898,35 +900,84 @@ export default {
 }
 
 .create-group-btn {
-  background-color: rgb(252, 210.9, 210.9);
+  background: #4facfe;
   cursor: pointer;
   border: none;
-  height: 100%;
-  width: 30px;
-  height: 30px;
+  height: 36px;
+  width: 36px;
   display: flex;
   justify-content: center;
   align-items: center;
-  border-radius: 10px;
+  border-radius: 8px;
+  transition: all 0.3s ease;
+}
+
+.create-group-btn:hover {
+  background: #3d8bfe;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(79, 172, 254, 0.3);
 }
 
 .create-group-icon {
-  width: 15px;
-  height: 15px;
+  width: 18px;
+  height: 18px;
+  color: #ffffff;
+}
+
+.contactlist-body,
+.contactlist-user {
+  padding: 0 !important;
+  margin: 0 !important;
+  width: 100%;
+  overflow: hidden !important;
 }
 
 .el-menu {
-  background-color: rgb(252, 210.9, 210.9);
-  width: 101%;
+  background-color: #f8f9fa;
+  width: 100% !important;
+  border: none;
+  padding: 0 !important;
+  margin: 0 !important;
+  overflow: hidden !important;
+  overflow-x: hidden !important;
+  overflow-y: hidden !important;
+}
+
+.el-sub-menu {
+  width: 100% !important;
+  overflow: hidden !important;
 }
 
 .el-menu-item {
-  background-color: rgb(255, 255, 255);
-  height: 45px;
+  background-color: #ffffff;
+  height: 48px;
+  border-radius: 0;
+  margin: 0 !important;
+  transition: all 0.2s ease;
+  padding-left: 12px !important;
+  padding-right: 0 !important;
+  border-bottom: 1px solid #f0f0f0;
+  width: 100% !important;
+  box-sizing: border-box;
+}
+
+.el-menu-item:last-child {
+  border-bottom: none;
+}
+
+.el-menu-item:hover {
+  background-color: #f3f4f6;
+}
+
+.el-menu-item.is-active {
+  background-color: #4facfe;
+  color: #ffffff;
 }
 
 .contactlist-user-title {
   font-family: Arial, Helvetica, sans-serif;
+  font-weight: 600;
+  color: #1f2937;
 }
 
 h3 {
@@ -1045,7 +1096,9 @@ h3 {
 }
 
 .action-btn {
-  background-color: rgb(252, 210.9, 210.9);
+  background: #4facfe;
+  border: none;
+  color: #ffffff;
   border: none;
   cursor: pointer;
   justify-content: center;

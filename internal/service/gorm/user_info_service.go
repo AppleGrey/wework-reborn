@@ -4,8 +4,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	redis "github.com/go-redis/redis/v8"
-	"gorm.io/gorm"
 	"kama_chat_server/internal/dao"
 	"kama_chat_server/internal/dto/request"
 	"kama_chat_server/internal/dto/respond"
@@ -14,10 +12,15 @@ import (
 	"kama_chat_server/internal/service/sms"
 	"kama_chat_server/pkg/constants"
 	"kama_chat_server/pkg/enum/user_info/user_status_enum"
+	jwtutil "kama_chat_server/pkg/util/jwt"
+	"kama_chat_server/pkg/util/password"
 	"kama_chat_server/pkg/util/random"
 	"kama_chat_server/pkg/zlog"
 	"regexp"
 	"time"
+
+	redis "github.com/go-redis/redis/v8"
+	"gorm.io/gorm"
 )
 
 type userInfoService struct {
@@ -53,27 +56,36 @@ func (u *userInfoService) checkUserIsAdminOrNot(user model.UserInfo) int8 {
 
 // Login 登录
 func (u *userInfoService) Login(loginReq request.LoginRequest) (string, *respond.LoginRespond, int) {
-	password := loginReq.Password
 	var user model.UserInfo
-	res := dao.GormDB.First(&user, "telephone = ?", loginReq.Telephone)
+	res := dao.GormDB.First(&user, "account = ?", loginReq.Account)
 	if res.Error != nil {
 		if errors.Is(res.Error, gorm.ErrRecordNotFound) {
-			message := "用户不存在，请注册"
+			message := "账号不存在，请注册"
 			zlog.Error(message)
 			return message, nil, -2
 		}
 		zlog.Error(res.Error.Error())
 		return constants.SYSTEM_ERROR, nil, -1
 	}
-	if user.Password != password {
+
+	// 验证密码
+	if !password.VerifyPassword(user.Password, loginReq.Password) {
 		message := "密码不正确，请重试"
 		zlog.Error(message)
 		return message, nil, -2
 	}
 
+	// 生成 JWT token
+	token, err := jwtutil.GenerateToken(user.Uuid, user.Account, user.Nickname, user.IsAdmin)
+	if err != nil {
+		zlog.Error("生成 token 失败: " + err.Error())
+		return constants.SYSTEM_ERROR, nil, -1
+	}
+
 	loginRsp := &respond.LoginRespond{
+		Token:     token,
 		Uuid:      user.Uuid,
-		Telephone: user.Telephone,
+		Account:   user.Account,
 		Nickname:  user.Nickname,
 		Email:     user.Email,
 		Avatar:    user.Avatar,
@@ -86,7 +98,7 @@ func (u *userInfoService) Login(loginReq request.LoginRequest) (string, *respond
 	year, month, day := user.CreatedAt.Date()
 	loginRsp.CreatedAt = fmt.Sprintf("%d.%d.%d", year, month, day)
 
-	return "登陆成功", loginRsp, 0
+	return "登录成功", loginRsp, 0
 }
 
 // SmsLogin 验证码登录
@@ -122,7 +134,7 @@ func (u *userInfoService) SmsLogin(req request.SmsLoginRequest) (string, *respon
 
 	loginRsp := &respond.LoginRespond{
 		Uuid:      user.Uuid,
-		Telephone: user.Telephone,
+		Account:   user.Account,
 		Nickname:  user.Nickname,
 		Email:     user.Email,
 		Avatar:    user.Avatar,
@@ -159,58 +171,66 @@ func (u *userInfoService) checkTelephoneExist(telephone string) (string, int) {
 	return "该电话已经存在，注册失败", -2
 }
 
+// checkAccountExist 检查账号是否存在
+func (u *userInfoService) checkAccountExist(account string) (string, int) {
+	var user model.UserInfo
+	if res := dao.GormDB.Where("account = ?", account).First(&user); res.Error != nil {
+		if errors.Is(res.Error, gorm.ErrRecordNotFound) {
+			zlog.Info("该账号不存在，可以注册")
+			return "", 0
+		}
+		zlog.Error(res.Error.Error())
+		return constants.SYSTEM_ERROR, -1
+	}
+	message := "该账号已被注册"
+	zlog.Info(message)
+	return message, -2
+}
+
 // Register 注册，返回(message, register_respond_string, error)
 func (u *userInfoService) Register(registerReq request.RegisterRequest) (string, *respond.RegisterRespond, int) {
-	key := "auth_code_" + registerReq.Telephone
-	code, err := myredis.GetKey(key)
-	if err != nil {
-		zlog.Error(err.Error())
-		return constants.SYSTEM_ERROR, nil, -1
-	}
-	if code != registerReq.SmsCode {
-		message := "验证码不正确，请重试"
-		zlog.Info(message)
-		return message, nil, -2
-	} else {
-		if err := myredis.DelKeyIfExists(key); err != nil {
-			zlog.Error(err.Error())
-			return constants.SYSTEM_ERROR, nil, -1
-		}
-	}
-	// 不用校验手机号，前端校验
-	// 判断电话是否已经被注册过了
-	message, ret := u.checkTelephoneExist(registerReq.Telephone)
+	// 检查账号是否已存在
+	message, ret := u.checkAccountExist(registerReq.Account)
 	if ret != 0 {
 		return message, nil, ret
 	}
+
+	// 创建新用户
 	var newUser model.UserInfo
 	newUser.Uuid = "U" + random.GetNowAndLenRandomString(11)
-	newUser.Telephone = registerReq.Telephone
-	newUser.Password = registerReq.Password
+	newUser.Account = registerReq.Account
 	newUser.Nickname = registerReq.Nickname
+
+	// 加密密码
+	hashedPassword, err := password.HashPassword(registerReq.Password)
+	if err != nil {
+		zlog.Error("密码加密失败: " + err.Error())
+		return constants.SYSTEM_ERROR, nil, -1
+	}
+	newUser.Password = hashedPassword
+
 	newUser.Avatar = "https://cube.elemecdn.com/0/88/03b0d39583f48206768a7534e55bcpng.png"
 	newUser.CreatedAt = time.Now()
-	newUser.IsAdmin = u.checkUserIsAdminOrNot(newUser)
+	newUser.IsAdmin = 0
 	newUser.Status = user_status_enum.NORMAL
-	// 手机号验证，最后一步才调用api，省钱hhh
-	//err := sms.VerificationCode(registerReq.Telephone)
-	//if err != nil {
-	//	zlog.Error(err.Error())
-	//	return "", err
-	//}
 
 	res := dao.GormDB.Create(&newUser)
 	if res.Error != nil {
 		zlog.Error(res.Error.Error())
 		return constants.SYSTEM_ERROR, nil, -1
 	}
-	// 注册成功，chat client建立
-	//if err := chat.NewClientInit(c, newUser.Uuid); err != nil {
-	//	return "", err
-	//}
+
+	// 生成 JWT token
+	token, err := jwtutil.GenerateToken(newUser.Uuid, newUser.Account, newUser.Nickname, newUser.IsAdmin)
+	if err != nil {
+		zlog.Error("生成 token 失败: " + err.Error())
+		return constants.SYSTEM_ERROR, nil, -1
+	}
+
 	registerRsp := &respond.RegisterRespond{
+		Token:     token,
 		Uuid:      newUser.Uuid,
-		Telephone: newUser.Telephone,
+		Account:   newUser.Account,
 		Nickname:  newUser.Nickname,
 		Email:     newUser.Email,
 		Avatar:    newUser.Avatar,
@@ -223,6 +243,90 @@ func (u *userInfoService) Register(registerReq request.RegisterRequest) (string,
 	year, month, day := newUser.CreatedAt.Date()
 	registerRsp.CreatedAt = fmt.Sprintf("%d.%d.%d", year, month, day)
 
+	return "注册成功", registerRsp, 0
+}
+
+// RegisterWithCrypto 注册（带加密密钥），返回(message, register_respond_string, error)
+func (u *userInfoService) RegisterWithCrypto(registerReq request.RegisterCryptoRequest) (string, *respond.RegisterRespond, int) {
+	// 检查账号是否已存在
+	message, ret := u.checkAccountExist(registerReq.Account)
+	if ret != 0 {
+		return message, nil, ret
+	}
+
+	// 创建新用户
+	var newUser model.UserInfo
+	newUser.Uuid = "U" + random.GetNowAndLenRandomString(11)
+	newUser.Account = registerReq.Account
+	newUser.Nickname = registerReq.Nickname
+
+	// 加密密码
+	hashedPassword, err := password.HashPassword(registerReq.Password)
+	if err != nil {
+		zlog.Error("密码加密失败: " + err.Error())
+		return constants.SYSTEM_ERROR, nil, -1
+	}
+	newUser.Password = hashedPassword
+
+	newUser.Avatar = "https://cube.elemecdn.com/0/88/03b0d39583f48206768a7534e55bcpng.png"
+	newUser.CreatedAt = time.Now()
+	newUser.IsAdmin = 0
+	newUser.Status = user_status_enum.NORMAL
+
+	// 使用事务确保用户创建和密钥保存的原子性
+	tx := dao.GormDB.Begin()
+	if tx.Error != nil {
+		zlog.Error("开始事务失败: " + tx.Error.Error())
+		return constants.SYSTEM_ERROR, nil, -1
+	}
+
+	// 创建用户
+	if err := tx.Create(&newUser).Error; err != nil {
+		tx.Rollback()
+		zlog.Error("创建用户失败: " + err.Error())
+		return constants.SYSTEM_ERROR, nil, -1
+	}
+
+	// 保存加密公钥（在同一事务中）
+	// 直接传入事务实例，避免修改全局变量
+	err = CryptoKeyService.SaveUserPublicKeys(newUser.Uuid, &registerReq, tx)
+
+	if err != nil {
+		tx.Rollback()
+		zlog.Error("保存加密密钥失败: " + err.Error())
+		return "保存加密密钥失败", nil, -1
+	}
+
+	// 提交事务
+	if err := tx.Commit().Error; err != nil {
+		zlog.Error("提交事务失败: " + err.Error())
+		return constants.SYSTEM_ERROR, nil, -1
+	}
+
+	// 生成 JWT token
+	token, err := jwtutil.GenerateToken(newUser.Uuid, newUser.Account, newUser.Nickname, newUser.IsAdmin)
+	if err != nil {
+		zlog.Error("生成 token 失败: " + err.Error())
+		return constants.SYSTEM_ERROR, nil, -1
+	}
+
+	registerRsp := &respond.RegisterRespond{
+		Token:     token,
+		Uuid:      newUser.Uuid,
+		Account:   newUser.Account,
+		Nickname:  newUser.Nickname,
+		Email:     newUser.Email,
+		Avatar:    newUser.Avatar,
+		Gender:    newUser.Gender,
+		Birthday:  newUser.Birthday,
+		Signature: newUser.Signature,
+		IsAdmin:   newUser.IsAdmin,
+		Status:    newUser.Status,
+	}
+	year, month, day := newUser.CreatedAt.Date()
+	registerRsp.CreatedAt = fmt.Sprintf("%d.%d.%d", year, month, day)
+
+	zlog.Info("用户注册成功（带加密）: " + newUser.Account)
 	return "注册成功", registerRsp, 0
 }
 

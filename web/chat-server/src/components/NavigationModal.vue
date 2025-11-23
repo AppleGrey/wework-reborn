@@ -80,24 +80,11 @@
         hide-after="0"
         enterable="false"
       >
-        <el-dropdown trigger="click" placement="right">
-          <button class="icon-btn">
-            <el-icon>
-              <Setting />
-            </el-icon>
-          </button>
-          <template #dropdown>
-            <el-dropdown-menu>
-              <el-dropdown-item
-                v-if="userInfo.is_admin == 1"
-                @click="handleToManager"
-              >
-                管理员模式
-              </el-dropdown-item>
-              <el-dropdown-item @click="logout">退出登录</el-dropdown-item>
-            </el-dropdown-menu>
-          </template>
-        </el-dropdown>
+        <button class="icon-btn" @click="handleToSettings">
+          <el-icon>
+            <Setting />
+          </el-icon>
+        </button>
       </el-tooltip>
       <el-tooltip
         effect="customized"
@@ -119,7 +106,7 @@ import { useRouter } from "vue-router";
 import { useStore } from "vuex";
 import { ElMessage } from "element-plus";
 import { reactive, toRefs } from "vue";
-import axios from "axios";
+import axios from "@/utils/axios";
 export default {
   name: "NavigationModal",
   setup() {
@@ -141,21 +128,9 @@ export default {
       console.log(data.userInfo);
       router.push("/manager");
     };
-    const logout = async () => {
-      store.commit("cleanUserInfo");
-      const req = {
-        owner_id: data.userInfo.uuid,
-      };
-      const rsp = await axios.post(
-        store.state.backendUrl + "/user/wsLogout",
-        req
-      );
-      if (rsp.data.code == 200) {
-        router.push("/login");
-        ElMessage.success(rsp.data.message);
-      } else {
-        ElMessage.error(rsp.data.message);
-      }
+    
+    const handleToSettings = () => {
+      router.push("/chat/settings");
     };
     const handleToOwnInfo = () => {
       router.push("/chat/owninfo");
@@ -166,8 +141,8 @@ export default {
       handleToContactList,
       handleToSessionList,
       handleToOwnInfo,
-      logout,
       handleToManager,
+      handleToSettings,
     };
   },
 };

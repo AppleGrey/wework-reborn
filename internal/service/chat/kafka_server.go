@@ -161,10 +161,12 @@ func (k *KafkaServer) Start() {
 					}
 
 				} else if message.ReceiveId[0] == 'G' { // 发送给Group
+					// 动态查询发送者的昵称和头像
+					sendName, sendAvatar := getUserInfo(message.SendId)
 					messageRsp := respond.GetGroupMessageListRespond{
 						SendId:     message.SendId,
-						SendName:   message.SendName,
-						SendAvatar: chatMessageReq.SendAvatar,
+						SendName:   sendName,   // 从用户表动态查询
+						SendAvatar: sendAvatar, // 从用户表动态查询
 						ReceiveId:  message.ReceiveId,
 						Type:       message.Type,
 						Content:    message.Content,
@@ -254,10 +256,12 @@ func (k *KafkaServer) Start() {
 					// 如果能找到ReceiveId，说明在线，可以发送，否则存表后跳过
 					// 因为在线的时候是通过websocket更新消息记录的，离线后通过存表，登录时只调用一次数据库操作
 					// 切换chat对象后，前端的messageList也会改变，获取messageList从第二次就是从redis中获取
+					// 动态查询发送者的昵称和头像
+					sendName, sendAvatar := getUserInfo(message.SendId)
 					messageRsp := respond.GetMessageListRespond{
 						SendId:     message.SendId,
-						SendName:   message.SendName,
-						SendAvatar: chatMessageReq.SendAvatar,
+						SendName:   sendName,   // 从用户表动态查询
+						SendAvatar: sendAvatar, // 从用户表动态查询
 						ReceiveId:  message.ReceiveId,
 						Type:       message.Type,
 						Content:    message.Content,
@@ -311,10 +315,12 @@ func (k *KafkaServer) Start() {
 						}
 					}
 				} else {
+					// 动态查询发送者的昵称和头像
+					sendName, sendAvatar := getUserInfo(message.SendId)
 					messageRsp := respond.GetGroupMessageListRespond{
 						SendId:     message.SendId,
-						SendName:   message.SendName,
-						SendAvatar: chatMessageReq.SendAvatar,
+						SendName:   sendName,   // 从用户表动态查询
+						SendAvatar: sendAvatar, // 从用户表动态查询
 						ReceiveId:  message.ReceiveId,
 						Type:       message.Type,
 						Content:    message.Content,
@@ -412,10 +418,12 @@ func (k *KafkaServer) Start() {
 					// 如果能找到ReceiveId，说明在线，可以发送，否则存表后跳过
 					// 因为在线的时候是通过websocket更新消息记录的，离线后通过存表，登录时只调用一次数据库操作
 					// 切换chat对象后，前端的messageList也会改变，获取messageList从第二次就是从redis中获取
+					// 动态查询发送者的昵称和头像
+					sendName, sendAvatar := getUserInfo(message.SendId)
 					messageRsp := respond.AVMessageRespond{
 						SendId:     message.SendId,
-						SendName:   message.SendName,
-						SendAvatar: message.SendAvatar,
+						SendName:   sendName,   // 从用户表动态查询
+						SendAvatar: sendAvatar, // 从用户表动态查询
 						ReceiveId:  message.ReceiveId,
 						Type:       message.Type,
 						Content:    message.Content,
@@ -495,6 +503,23 @@ func (k *KafkaServer) SendClientToLogout(client *Client) {
 	k.mutex.Lock()
 	k.Logout <- client
 	k.mutex.Unlock()
+}
+
+// PushMessage 推送消息给接收方（用于 HTTP API 发送消息后的推送）
+// 注意：不再推送给发送方，因为前端已经通过乐观更新显示了消息
+func (k *KafkaServer) PushMessage(messageBack *MessageBack, sendId, receiveId string) {
+	k.mutex.Lock()
+	defer k.mutex.Unlock()
+
+	// 只推送给接收方（发送方已经通过乐观更新显示了消息）
+	if receiveClient, ok := k.Clients[receiveId]; ok {
+		receiveClient.SendBack <- messageBack
+		zlog.Info(fmt.Sprintf("已通过 WebSocket 推送消息给接收方: %s", receiveId))
+	} else {
+		zlog.Info(fmt.Sprintf("接收方 %s 不在线，消息已保存到数据库", receiveId))
+	}
+
+	// 不再推送给发送方，因为前端已经通过乐观更新显示了消息
 }
 
 func (k *KafkaServer) RemoveClient(uuid string) {

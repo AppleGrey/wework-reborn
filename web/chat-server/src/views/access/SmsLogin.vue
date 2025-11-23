@@ -64,7 +64,7 @@
 
 <script>
 import { reactive, toRefs } from "vue";
-import axios from "axios";
+import axios from "@/utils/axios";
 import { useRouter } from "vue-router";
 import { ElMessage } from "element-plus";
 import { useStore } from "vuex";
@@ -108,7 +108,7 @@ export default {
             store.commit("setUserInfo", response.data.data);
             // 准备创建websocket连接
             const wsUrl =
-              store.state.wsUrl + "/wss?client_id=" + response.data.data.uuid;
+              store.state.wsUrl + "/wss?client_id=" + response.data.data.uuid + "&token=" + encodeURIComponent(response.data.data.token);
             console.log(wsUrl);
             store.state.socket = new WebSocket(wsUrl);
             store.state.socket.onopen = () => {
@@ -120,8 +120,8 @@ export default {
             store.state.socket.onclose = () => {
               console.log("WebSocket连接已关闭");
             };
-            store.state.socket.onerror = () => {
-              console.log("WebSocket连接发生错误");
+            store.state.socket.onerror = (error) => {
+              console.log("WebSocket连接发生错误", error);
             };
             router.push("/chat/sessionlist");
           } catch (error) {

@@ -1,135 +1,175 @@
-# 分布式部署的仿微信项目KamaChat
+# WeWork Reborn
+
+一个基于 [KamaChat](https://github.com/youngyangyang04/KamaChat) 开发的即时通讯系统，支持端到端加密（E2EE）的单聊功能。
+
+## 📋 项目简介
+
+WeWork Reborn 是一个功能完整的即时通讯系统，在 kama-chat 开源项目的基础上，新增了端到端加密功能，确保用户通信的隐私和安全。系统采用前后端分离架构，支持实时消息推送、用户管理、会话管理等功能。
+
+## ✨ 主要特性
+
+- 🔐 **端到端加密（E2EE）**：基于 Signal Protocol 设计，实现 X3DH 密钥协商和双棘轮算法
+- 💬 **实时聊天**：基于 WebSocket 的实时消息推送
+- 👥 **用户管理**：用户注册、登录、个人信息管理
+- 📱 **会话管理**：会话列表、消息历史记录
+- 🔑 **密钥管理**：主密钥可选持久化存储，支持会话刷新后自动恢复
+- 📦 **消息队列**：支持 Kafka 和 Channel 两种消息模式
+- 🔒 **安全认证**：JWT Token 认证机制
+
+## 🛠️ 技术栈
+
+### 后端
+- **语言**：Go 1.24+
+- **Web 框架**：Gin
+- **数据库**：PostgreSQL
+- **缓存**：Redis
+- **消息队列**：Kafka（可选）
+- **WebSocket**：Gorilla WebSocket
+- **日志**：Zap
+- **ORM**：GORM
+
+### 前端
+- **框架**：Vue 3
+- **UI 组件库**：Element Plus
+- **状态管理**：Vuex
+- **路由**：Vue Router
+- **HTTP 客户端**：Axios
+- **加密库**：TweetNaCl.js
+
+## 📁 项目结构
+
+```
+wework-reborn/
+├── api/v1/                    # API 控制器
+│   ├── chatroom_controller.go
+│   ├── crypto_key.go          # 加密密钥 API
+│   ├── encrypted_message.go   # 加密消息 API
+│   ├── message_controller.go
+│   ├── user_info_controller.go
+│   └── ...
+├── cmd/kama_chat_server/      # 主程序入口
+│   └── main.go
+├── configs/                    # 配置文件
+│   └── config.toml
+├── docs/                      # 文档
+│   ├── 单聊加密实现总结.md
+│   ├── 端到端加密方案.md
+│   └── ...
+├── internal/                   # 内部模块
+│   ├── config/                # 配置管理
+│   ├── dao/                   # 数据访问层
+│   ├── dto/                   # 数据传输对象
+│   ├── https_server/          # HTTP 服务器
+│   ├── model/                 # 数据模型
+│   ├── service/               # 业务逻辑层
+│   │   ├── chat/              # 聊天服务
+│   │   ├── gorm/              # GORM 服务
+│   │   └── ...
+│   └── ...
+├── migrations/                # 数据库迁移脚本
+│   └── 001_add_e2ee_support.sql
+├── pkg/                       # 公共包
+│   ├── middleware/            # 中间件
+│   ├── util/                  # 工具函数
+│   └── ...
+├── web/chat-server/           # 前端项目
+│   ├── src/
+│   │   ├── crypto/            # 加密核心模块
+│   │   │   ├── sessionManager.js
+│   │   │   ├── doubleRatchet.js
+│   │   │   ├── x3dh.js
+│   │   │   └── ...
+│   │   ├── views/             # 页面组件
+│   │   ├── components/        # 公共组件
+│   │   └── ...
+│   └── package.json
+└── README.md
+```
+
+## 🚀 快速开始
+
+### 环境要求
+
+- Go 1.24+
+- Node.js 16+
+- PostgreSQL 12+
+- Redis 6+
+
+
+## ⚙️ 配置说明
+
+### 后端配置（configs/config.toml）
 
-> **本项目目前只在[知识星球](https://programmercarl.com/other/kstar.html)答疑并维护**。
+- **mainConfig**：服务器基本配置（端口、HTTPS 等）
+- **postgresqlConfig**：PostgreSQL 数据库配置
+- **redisConfig**：Redis 缓存配置
+- **kafkaConfig**：Kafka 消息队列配置（可选）
+- **jwtConfig**：JWT Token 配置
+- **authCodeConfig**：短信验证码配置（阿里云）
+- **logConfig**：日志配置
 
-这次发布一个非常硬核的Go项目，分布式部署的仿微信项目：KamaChat
+### 前端配置（web/chat-server/src/store/index.js）
 
-越来越多的大厂开始在核心业务中采用 Go 语言，例如在云计算、分布式系统、微服务架构等领域，Go 语言都有着出色的表现。
+- **backendUrl**：后端 API 地址
+- **wsUrl**：WebSocket 服务器地址
 
-其实我从24年就开始规划Go的项目，现在这个项目终于打磨好了。
+## 🔐 端到端加密功能
 
-这个项目整个前后端代码加起来有1.5w行（前后端分离），是一个功能非常庞大的项目。
+### 加密协议
 
-如果对前后端有了解的同学，主要是理解业务流程，每天抽5h，应该在一个月左右能完全掌握这个项目。
+系统实现了基于 Signal Protocol 的端到端加密：
 
-如果对go、vue都不太熟悉，对前后端这种api调用方式不太熟悉，可能还需要提前大概去走一遍go和vue，具体时间得看你学基础的耗时，建议通过ai来快速学习。
+- **X3DH 密钥协商**：用于建立初始加密会话
+- **双棘轮算法（Double Ratchet）**：提供前向安全性和后向安全性
+- **AES-GCM 加密**：用于消息内容的对称加密
 
-在开发这个项目，工时大约在200h-300h左右（**相当于24小时都在工作，干了十天**）。
+### 密钥管理
 
-## 涉及技术面广
+- **主密钥（Master Key）**：从用户密码派生，用于加密/解密私钥
+- **身份密钥（Identity Key）**：长期密钥对，用于身份验证
+- **签名预密钥（Signed Pre-Key）**：用于 X3DH 协商
+- **一次性预密钥（One-Time Pre-Key）**：提供前向安全性
+- **棘轮密钥（Ratchet Key）**：临时密钥对，用于双棘轮算法
 
-此项目构建了一个**全面且复杂的即时通讯系统**，前后端融合了广泛的技术体系，深入研究各个技术模块，能让人对即时通讯领域形成系统而完整的认知。
+### 主密钥持久化
 
-下面将详细阐述各个技术板块及其具体实现功能：
+用户可以在设置页面选择是否保存主密钥到本地存储：
 
-1、 **后台开发者管理**
+- **启用**：主密钥保存在 sessionStorage，刷新页面后自动恢复，无需重新输入密码
+- **禁用**：主密钥仅保存在内存中，刷新页面后需要重新登录
 
-这一模块赋予后台开发者强大的管理权限，主要用于对用户群聊和用户角色进行管控。
+详细实现文档请参考：`docs/单聊加密实现总结.md`
 
-开发者可以对用户群聊执行禁用、启用和删除操作，以确保群聊的正常秩序和合规性。同时，开发者还能根据实际需求，将普通用户设置为管理员，协助进行系统管理。
+## 📡 API 文档
 
-2、**类似聊天软件的联系人体系**
+### 认证相关
+- `POST /login` - 用户登录
+- `POST /register` - 用户注册
+- `POST /registerWithCrypto` - 带加密密钥的注册
 
-该体系模拟了常见聊天软件的联系人管理功能，为用户提供了丰富的社交互动选项。
+### 用户相关
+- `POST /user/getUserInfo` - 获取用户信息
+- `POST /user/updateUserInfo` - 更新用户信息
+- `POST /user/getUserInfoList` - 获取用户列表
 
-用户可以自由添加或删除联系人，还能对联系人进行拉黑操作。
+### 消息相关
+- `POST /message/sendMessage` - 发送消息
+- `POST /message/getMessageList` - 获取消息列表
+- `POST /message/sendEncryptedMessage` - 发送加密消息
 
-当用户想要添加新联系人时，可以发起申请，对方则有权选择同意或拒绝该申请。
+### 加密相关
+- `POST /crypto/getPublicKeyBundle` - 获取公钥束
+- `POST /crypto/uploadPublicKeyBundle` - 上传公钥束
 
-3、 **单聊与群聊**
+更多 API 详情请查看 `api/v1/` 目录下的控制器文件。
 
-单聊和群聊是即时通讯系统的核心功能之一，其实现依赖于后端的聊天服务器。
 
-无论是单聊消息还是群聊消息，都会被发送到后端服务器，由服务器负责将消息准确无误地转发给相应的接收方。
+## 📄 许可证
 
-4、 **多种消息类型的上传和下载（文本、文件、视频**）
+本项目基于 kama-chat 开源项目开发，请遵循原项目的许可证要求。
 
-系统支持多种类型的消息交互，包括文本、文件和视频。用户可以方便地上传和下载这些不同类型的消息，满足多样化的沟通需求。
 
-5、 **Kafka**
+---
 
-Kafka 在项目中扮演着消息传输的重要角色。
-
-它作为一个高效的消息队列系统，负责将客户端（client）发送的消息转发到服务器（server），确保消息的可靠传输和处理。
-
-6、 **语音视频通话**
-
-语音视频通话功能为用户提供了更加直观和实时的沟通方式。
-
-用户可以发起通话邀请，对方可以选择接受或拒绝邀请。在通话过程中，任何一方都可以随时挂断通话，结束交流。
-
-7、 **WebSocket**
-
-WebSocket 为前端和客户端之间建立了实时、双向的通信连接。
-
-它负责接收前端发送给客户端的消息，并将客户端的消息传递给服务器，实现了消息的高效传输和即时响应。
-
-通过参与这个项目，对上述每个技术点进行深入钻研，开发者可以全面了解即时通讯系统的架构、原理和实现细节，从而在该领域积累丰富的经验和技能。
-
-## 系统展示
-
-单聊：
-
-以下我只放了部分视频演示，该项目的各个部分都是视频演示，共计三十多个视频展示：
-
-
-![image](https://file1.kamacoder.com/i/web/2025-08-18_12-28-59.jpg)
-
-更多视频展示 可以在项目专栏的【项目展示以及测试】观看
-![image](https://file1.kamacoder.com/i/web/2025-08-18_12-29-34.jpg)
-
-## KamaChat项目精讲
-
-该项目的专栏是[知识星球](https://programmercarl.com/other/kstar.html)录友专享的。
-
-项目专栏依然是将 「简历写法」给大家列出来了，大家学完就可以参考这个来写简历：
-
-![image](https://file1.kamacoder.com/i/web/20250407103128.png)
-
-做完该项目，面试中大概率会有哪些面试问题，以及如何回答，也列出好了。
-
-面试问题，都是星球录友那这个项目面试遇到的实际问题：
-
-![image](https://file1.kamacoder.com/i/web/20250407103212.png)
-
-专栏中的项目面试题都掌握的话，这个项目在面试中基本没问题。
-
-很多录友在做项目的时候，把项目运行起来 就是第一大难点！
-
-本项目运行起来 需要依赖的环境很多，所以我给大家准备的 自动化环境配置脚本， **项目运行环境，一键配置！ 不需要大家去处理环境问题了**：
-
-![image](https://file1.kamacoder.com/i/web/2025-08-18_12-32-49.jpg)
-
-环境自动配置脚本执行中：
-
-![image](https://file1.kamacoder.com/i/web/2025-08-18_12-33-20.jpg)
-
-如果大家想进一步优化这个项目，这里给出可以深挖的点：
-
-![image](https://file1.kamacoder.com/i/web/2025-08-18_12-33-47.jpg)
-
-
-
-后端开发详细设计：包含 建表、日志库、架构、业务开发、群聊、后台管理、消息管理、管理员、文件上传下载、音视频通话等等：
-
-![image](https://file1.kamacoder.com/i/web/2025-08-18_12-43-10.jpg)
-
-![image](https://file1.kamacoder.com/i/web/2025-08-18_12-43-42.jpg)
-
-前端开发详细设计：
-
-![image](https://file1.kamacoder.com/i/web/2025-08-18_12-44-10.jpg)
-
-![image](https://file1.kamacoder.com/i/web/2025-08-18_12-44-34.jpg)
-
-## 答疑
-
-本项目在[知识星球](https://programmercarl.com/other/kstar.html)里为 文字专栏形式，大家不用担心，看不懂，星球里每个项目有专属答疑群，任何问题都可以在群里问，都会得到解答：
-
-![](https://file1.kamacoder.com/i/web/2025-09-26_11-30-13.jpg)
-
-
-## 获取本项目专栏
-
-**本文档仅为星球内部专享，大家可以加入[知识星球](./kstar.md)里获取，在星球置顶一**
+**注意**：本项目仅供学习和研究使用，生产环境使用前请进行充分的安全评估和测试。
 

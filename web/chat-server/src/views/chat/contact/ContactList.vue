@@ -195,7 +195,7 @@ import Modal from "@/components/Modal.vue";
 import SmallModal from "@/components/SmallModal.vue";
 import ContactListModal from "@/components/ContactListModal.vue";
 import NavigationModal from "@/components/NavigationModal.vue";
-import axios from "axios";
+import axios from "@/utils/axios";
 import { ElMessage } from "element-plus";
 export default {
   name: "ContactList",
@@ -674,13 +674,26 @@ export default {
 }
 
 .el-menu {
-  background-color: rgb(252, 210.9, 210.9);
+  background-color: #f8f9fa;
   width: 101%;
+  border: none;
 }
 
 .el-menu-item {
-  background-color: rgb(255, 255, 255);
-  height: 45px;
+  background-color: #ffffff;
+  height: 48px;
+  border-radius: 8px;
+  margin: 4px 8px;
+  transition: all 0.2s ease;
+}
+
+.el-menu-item:hover {
+  background-color: #f3f4f6;
+}
+
+.el-menu-item.is-active {
+  background-color: #4facfe;
+  color: #ffffff;
 }
 
 .contactlist-user-title {

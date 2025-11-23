@@ -46,17 +46,32 @@ func init() {
 
 // 将https://127.0.0.1:8000/static/xxx 转为 /static/xxx
 func normalizePath(path string) string {
-	// 查找 "/static/" 的位置
-	if path == "https://cube.elemecdn.com/0/88/03b0d39583f48206768a7534e55bcpng.png" {
+	// 如果是 HTTP/HTTPS URL，直接返回（外部资源）
+	if strings.HasPrefix(path, "http://") || strings.HasPrefix(path, "https://") {
 		return path
 	}
+	
+	// 查找 "/static/" 的位置
 	staticIndex := strings.Index(path, "/static/")
 	if staticIndex < 0 {
-		log.Println(path)
-		zlog.Error("路径不合法")
+		// 找不到 "/static/"，返回原路径
+		log.Println("路径不包含 /static/:", path)
+		zlog.Warn("路径不包含 /static/，返回原路径: " + path)
+		return path
 	}
+	
 	// 返回从 "/static/" 开始的部分
 	return path[staticIndex:]
+}
+
+// getUserInfo 根据 UUID 查询用户的昵称和头像
+func getUserInfo(userId string) (string, string) {
+	var user model.UserInfo
+	if res := dao.GormDB.Select("nickname, avatar").Where("uuid = ?", userId).First(&user); res.Error != nil {
+		zlog.Error("查询用户信息失败: " + res.Error.Error())
+		return "", ""
+	}
+	return user.Nickname, user.Avatar
 }
 
 // Start 启动函数，Server端用主进程起，Client端可以用协程起
@@ -184,10 +199,12 @@ func (s *Server) Start() {
 						}
 
 					} else if message.ReceiveId[0] == 'G' { // 发送给Group
+						// 动态查询发送者的昵称和头像
+						sendName, sendAvatar := getUserInfo(message.SendId)
 						messageRsp := respond.GetGroupMessageListRespond{
 							SendId:     message.SendId,
-							SendName:   message.SendName,
-							SendAvatar: chatMessageReq.SendAvatar,
+							SendName:   sendName,   // 从用户表动态查询
+							SendAvatar: sendAvatar, // 从用户表动态查询
 							ReceiveId:  message.ReceiveId,
 							Type:       message.Type,
 							Content:    message.Content,
@@ -277,10 +294,12 @@ func (s *Server) Start() {
 						// 如果能找到ReceiveId，说明在线，可以发送，否则存表后跳过
 						// 因为在线的时候是通过websocket更新消息记录的，离线后通过存表，登录时只调用一次数据库操作
 						// 切换chat对象后，前端的messageList也会改变，获取messageList从第二次就是从redis中获取
+						// 动态查询发送者的昵称和头像
+						sendName, sendAvatar := getUserInfo(message.SendId)
 						messageRsp := respond.GetMessageListRespond{
 							SendId:     message.SendId,
-							SendName:   message.SendName,
-							SendAvatar: chatMessageReq.SendAvatar,
+							SendName:   sendName,   // 从用户表动态查询
+							SendAvatar: sendAvatar, // 从用户表动态查询
 							ReceiveId:  message.ReceiveId,
 							Type:       message.Type,
 							Content:    message.Content,
@@ -334,10 +353,12 @@ func (s *Server) Start() {
 							}
 						}
 					} else {
+						// 动态查询发送者的昵称和头像
+						sendName, sendAvatar := getUserInfo(message.SendId)
 						messageRsp := respond.GetGroupMessageListRespond{
 							SendId:     message.SendId,
-							SendName:   message.SendName,
-							SendAvatar: chatMessageReq.SendAvatar,
+							SendName:   sendName,   // 从用户表动态查询
+							SendAvatar: sendAvatar, // 从用户表动态查询
 							ReceiveId:  message.ReceiveId,
 							Type:       message.Type,
 							Content:    message.Content,
@@ -435,10 +456,12 @@ func (s *Server) Start() {
 						// 如果能找到ReceiveId，说明在线，可以发送，否则存表后跳过
 						// 因为在线的时候是通过websocket更新消息记录的，离线后通过存表，登录时只调用一次数据库操作
 						// 切换chat对象后，前端的messageList也会改变，获取messageList从第二次就是从redis中获取
+						// 动态查询发送者的昵称和头像
+						sendName, sendAvatar := getUserInfo(message.SendId)
 						messageRsp := respond.AVMessageRespond{
 							SendId:     message.SendId,
-							SendName:   message.SendName,
-							SendAvatar: message.SendAvatar,
+							SendName:   sendName,   // 从用户表动态查询
+							SendAvatar: sendAvatar, // 从用户表动态查询
 							ReceiveId:  message.ReceiveId,
 							Type:       message.Type,
 							Content:    message.Content,
@@ -505,4 +528,21 @@ func (s *Server) RemoveClient(uuid string) {
 	s.mutex.Lock()
 	delete(s.Clients, uuid)
 	s.mutex.Unlock()
+}
+
+// PushMessage 推送消息给接收方（用于 HTTP API 发送消息后的推送）
+// 注意：不再推送给发送方，因为前端已经通过乐观更新显示了消息
+func (s *Server) PushMessage(messageBack *MessageBack, sendId, receiveId string) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+
+	// 只推送给接收方（发送方已经通过乐观更新显示了消息）
+	if receiveClient, ok := s.Clients[receiveId]; ok {
+		receiveClient.SendBack <- messageBack
+		zlog.Info(fmt.Sprintf("已通过 WebSocket 推送消息给接收方: %s", receiveId))
+	} else {
+		zlog.Info(fmt.Sprintf("接收方 %s 不在线，消息已保存到数据库", receiveId))
+	}
+
+	// 不再推送给发送方，因为前端已经通过乐观更新显示了消息
 }
