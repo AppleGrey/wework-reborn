@@ -46,6 +46,7 @@ export default createStore({
     token: sessionStorage.getItem('token') || '',
     masterKey: initialMasterKey, // 主密钥（从 sessionStorage 加载，如果存在）
     socket: null,
+    notificationFilterType: null, // 通知筛选类型：null=全部, 'friend'=好友通知, 'group'=群通知, 'system'=系统消息
   },
   getters: {
   },
@@ -88,6 +89,9 @@ export default createStore({
       sessionStorage.removeItem('token');
       sessionStorage.removeItem('masterKey'); // 清除 sessionStorage 中的主密钥
       console.log('用户信息和主密钥已清除');
+    },
+    setNotificationFilterType(state, filterType) {
+      state.notificationFilterType = filterType;
     }
   },
   actions: {

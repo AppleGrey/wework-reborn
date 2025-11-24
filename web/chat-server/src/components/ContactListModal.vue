@@ -285,6 +285,36 @@
     </div>
     <div class="contactlist-body">
       <div class="contactlist-user">
+        <!-- 通知分类 - 放在联系人上面 -->
+        <div class="notification-category-list">
+          <div 
+            class="notification-category-item"
+            :class="{ 'active': store.state.notificationFilterType === 'friend' }"
+            @click="handleSelectNotificationCategory('friend')"
+          >
+            <span class="notification-category-text">好友通知</span>
+            <el-icon class="notification-category-arrow"><ArrowRight /></el-icon>
+          </div>
+          <div class="notification-category-divider"></div>
+          <div 
+            class="notification-category-item"
+            :class="{ 'active': store.state.notificationFilterType === 'group' }"
+            @click="handleSelectNotificationCategory('group')"
+          >
+            <span class="notification-category-text">群通知</span>
+            <el-icon class="notification-category-arrow"><ArrowRight /></el-icon>
+          </div>
+          <div class="notification-category-divider"></div>
+          <div 
+            class="notification-category-item"
+            :class="{ 'active': store.state.notificationFilterType === 'system' }"
+            @click="handleSelectNotificationCategory('system')"
+          >
+            <span class="notification-category-text">系统消息</span>
+            <el-icon class="notification-category-arrow"><ArrowRight /></el-icon>
+          </div>
+        </div>
+
         <el-menu
           router
           unique-opened
@@ -374,6 +404,7 @@ import { useRouter } from "vue-router";
 import { useStore } from "vuex";
 import axios from "@/utils/axios";
 import { ElMessage } from "element-plus";
+import { ArrowRight } from "@element-plus/icons-vue";
 import Modal from "./Modal.vue";
 import SmallModal from "./SmallModal.vue";
 export default {
@@ -384,10 +415,21 @@ export default {
   components: {
     Modal,
     SmallModal,
+    ArrowRight,
   },
   setup() {
     const router = useRouter();
     const store = useStore();
+
+    // 选择通知分类
+    const handleSelectNotificationCategory = (category) => {
+      // 如果点击的是当前选中的分类，则取消筛选（显示全部）
+      if (store.state.notificationFilterType === category) {
+        store.commit('setNotificationFilterType', null);
+      } else {
+        store.commit('setNotificationFilterType', category);
+      }
+    };
     const data = reactive({
       chatMessage: "",
       chatName: "",
@@ -845,6 +887,8 @@ export default {
     return {
       ...toRefs(data),
       router,
+      store,
+      handleSelectNotificationCategory,
       handleCreateGroup,
       showCreateGroupModal,
       closeCreateGroupModal,
@@ -875,6 +919,40 @@ export default {
 </script>
 
 <style>
+.contactlist-container {
+  overflow-y: auto;
+  overflow-x: hidden;
+  /* 使用 scrollbar-gutter 预留滚动条空间，避免内容位移 */
+  scrollbar-gutter: stable;
+}
+
+/* 自定义滚动条样式，使其更细且不占用空间 */
+.contactlist-container::-webkit-scrollbar {
+  width: 6px;
+}
+
+.contactlist-container::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.contactlist-container::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.15);
+  border-radius: 3px;
+  border: 1px solid transparent;
+  background-clip: padding-box;
+}
+
+.contactlist-container::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.25);
+  background-clip: padding-box;
+}
+
+/* Firefox 滚动条样式 */
+.contactlist-container {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(0, 0, 0, 0.15) transparent;
+}
+
 .contactlist-header {
   display: flex;
   flex-direction: row;
@@ -1124,5 +1202,55 @@ h3 {
   height: 30px;
   margin-left: 20px;
   margin-right: 20px;
+}
+
+.notification-category-list {
+  margin-top: 20px;
+  padding: 0;
+}
+
+.notification-category-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 20px;
+  cursor: pointer;
+  color: rgba(43, 42, 42, 0.893);
+  transition: background-color 0.2s;
+}
+
+.notification-category-item:hover {
+  background-color: rgba(0, 0, 0, 0.05);
+}
+
+.notification-category-item.active {
+  background-color: rgba(64, 158, 255, 0.1);
+  color: #409eff;
+}
+
+.notification-category-text {
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.notification-category-arrow {
+  font-size: 14px;
+  color: rgba(43, 42, 42, 0.5);
+}
+
+.notification-category-item.active .notification-category-arrow {
+  color: #409eff;
+}
+
+.notification-category-divider {
+  height: 1px;
+  background-color: rgba(0, 0, 0, 0.1);
+  margin: 0 20px;
+}
+
+.notification-contact-divider {
+  height: 1px;
+  background-color: rgba(0, 0, 0, 0.15);
+  margin: 15px 20px;
 }
 </style>

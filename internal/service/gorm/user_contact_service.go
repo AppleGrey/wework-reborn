@@ -1,6 +1,7 @@
 package gorm
 
 import (
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -15,6 +16,7 @@ import (
 	"kama_chat_server/pkg/enum/contact_apply/contact_apply_status_enum"
 	"kama_chat_server/pkg/enum/group_info/group_status_enum"
 	notification_type_enum "kama_chat_server/pkg/enum/notification/notification_type_enum"
+	notification_status_enum "kama_chat_server/pkg/enum/notification/notification_status_enum"
 	"kama_chat_server/pkg/enum/user_info/user_status_enum"
 	"kama_chat_server/pkg/util/random"
 	"kama_chat_server/pkg/zlog"
@@ -458,6 +460,11 @@ func (u *userContactService) PassContactApply(ownerId string, contactId string) 
 		zlog.Error(res.Error.Error())
 		return constants.SYSTEM_ERROR, -1
 	}
+	// 检查是否已经处理过
+	if contactApply.Status == contact_apply_status_enum.AGREE {
+		zlog.Info(fmt.Sprintf("好友申请已处理过: ownerId=%s, contactId=%s, applyId=%s", ownerId, contactId, contactApply.Uuid))
+		return "该好友申请已处理过", 0
+	}
 	if ownerId[0] == 'U' {
 		var user model.UserInfo
 		if res := dao.GormDB.Where("uuid = ?", contactId).Find(&user); res.Error != nil {
@@ -558,6 +565,37 @@ func (u *userContactService) PassContactApply(ownerId string, contactId string) 
 			zlog.Error(err.Error())
 		}
 
+		// 更新被申请人的type=1通知为type=6（已同意）
+		// 查找被申请人（ownerId）收到的type=1通知
+		var originalNotification model.Notification
+		if err := dao.GormDB.Where("user_id = ? AND related_id = ? AND type = ? AND related_type = ?", ownerId, contactApply.Uuid, notification_type_enum.FriendApply, "contact_apply").First(&originalNotification).Error; err == nil {
+			// 获取申请人的信息
+			var applicantUser model.UserInfo
+			applicantName := contactId
+			if res := dao.GormDB.Where("uuid = ?", contactId).First(&applicantUser); res.Error == nil {
+				applicantName = applicantUser.Nickname
+			}
+			// 更新通知类型为已同意，并标记为已读
+			now := time.Now()
+			readAt := sql.NullTime{
+				Time:  now,
+				Valid: true,
+			}
+			if res := dao.GormDB.Model(&model.Notification{}).Where("uuid = ?", originalNotification.Uuid).Updates(map[string]interface{}{
+				"type":    notification_type_enum.ContactAccepted,
+				"title":   "好友申请已通过",
+				"content": fmt.Sprintf("您已同意 %s 的好友申请", applicantName),
+				"status":  notification_status_enum.Read,
+				"read_at": readAt,
+			}); res.Error != nil {
+				zlog.Warn(fmt.Sprintf("更新好友申请通知失败: notification_uuid=%s, error=%s", originalNotification.Uuid, res.Error.Error()))
+			} else {
+				zlog.Info(fmt.Sprintf("更新好友申请通知为已同意: notification_uuid=%s", originalNotification.Uuid))
+			}
+		} else {
+			zlog.Warn(fmt.Sprintf("未找到对应的好友申请通知: ownerId=%s, applyId=%s, error=%s", ownerId, contactApply.Uuid, err.Error()))
+		}
+
 		// 创建好友申请已通过通知（向申请人）
 		// 获取处理者的信息（ownerId是处理申请的人）
 		var handlerUser model.UserInfo
@@ -640,12 +678,48 @@ func (u *userContactService) RefuseContactApply(ownerId string, contactId string
 		zlog.Error(res.Error.Error())
 		return constants.SYSTEM_ERROR, -1
 	}
+	// 检查是否已经处理过
+	if contactApply.Status == contact_apply_status_enum.REFUSE || contactApply.Status == contact_apply_status_enum.AGREE {
+		zlog.Info(fmt.Sprintf("好友申请已处理过: ownerId=%s, contactId=%s, applyId=%s, status=%d", ownerId, contactId, contactApply.Uuid, contactApply.Status))
+		return "该好友申请已处理过", 0
+	}
 	contactApply.Status = contact_apply_status_enum.REFUSE
 	if res := dao.GormDB.Save(&contactApply); res.Error != nil {
 		zlog.Error(res.Error.Error())
 		return constants.SYSTEM_ERROR, -1
 	}
 	if ownerId[0] == 'U' {
+		// 更新被申请人的type=1通知为type=7（已拒绝）
+		// 查找被申请人（ownerId）收到的type=1通知
+		var originalNotification model.Notification
+		if err := dao.GormDB.Where("user_id = ? AND related_id = ? AND type = ? AND related_type = ?", ownerId, contactApply.Uuid, notification_type_enum.FriendApply, "contact_apply").First(&originalNotification).Error; err == nil {
+			// 获取申请人的信息
+			var applicantUser model.UserInfo
+			applicantName := contactId
+			if res := dao.GormDB.Where("uuid = ?", contactId).First(&applicantUser); res.Error == nil {
+				applicantName = applicantUser.Nickname
+			}
+			// 更新通知类型为已拒绝，并标记为已读
+			now := time.Now()
+			readAt := sql.NullTime{
+				Time:  now,
+				Valid: true,
+			}
+			if res := dao.GormDB.Model(&model.Notification{}).Where("uuid = ?", originalNotification.Uuid).Updates(map[string]interface{}{
+				"type":    notification_type_enum.ContactRejected,
+				"title":   "好友申请已拒绝",
+				"content": fmt.Sprintf("您已拒绝 %s 的好友申请", applicantName),
+				"status":  notification_status_enum.Read,
+				"read_at": readAt,
+			}); res.Error != nil {
+				zlog.Warn(fmt.Sprintf("更新好友申请通知失败: notification_uuid=%s, error=%s", originalNotification.Uuid, res.Error.Error()))
+			} else {
+				zlog.Info(fmt.Sprintf("更新好友申请通知为已拒绝: notification_uuid=%s", originalNotification.Uuid))
+			}
+		} else {
+			zlog.Warn(fmt.Sprintf("未找到对应的好友申请通知: ownerId=%s, applyId=%s, error=%s", ownerId, contactApply.Uuid, err.Error()))
+		}
+
 		// 创建好友申请已拒绝通知（向申请人）
 		// 获取处理者的信息（ownerId是处理申请的人）
 		var handlerUser model.UserInfo
