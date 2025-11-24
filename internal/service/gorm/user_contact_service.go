@@ -467,7 +467,65 @@ func (u *userContactService) PassContactApply(ownerId string, contactId string) 
 			zlog.Error(res.Error.Error())
 			return constants.SYSTEM_ERROR, -1
 		}
+
+		// 创建双向会话
+		// 1. 检查 ownerId -> contactId 的会话是否已存在
+		var existingSession1 model.Session
+		if err := dao.GormDB.Where("send_id = ? AND receive_id = ?", ownerId, contactId).First(&existingSession1).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				// 会话不存在，创建新会话
+				createSessionReq1 := request.CreateSessionRequest{
+					SendId:    ownerId,
+					ReceiveId: contactId,
+				}
+				_, sessionId1, ret1 := SessionService.CreateSession(createSessionReq1)
+				if ret1 != 0 {
+					zlog.Warn(fmt.Sprintf("创建会话失败: %s->%s, ret=%d", ownerId, contactId, ret1))
+				} else {
+					zlog.Info(fmt.Sprintf("创建会话成功: %s->%s, session_id=%s", ownerId, contactId, sessionId1))
+				}
+			} else {
+				zlog.Error(fmt.Sprintf("查询会话失败: %s->%s, error=%s", ownerId, contactId, err.Error()))
+			}
+		} else {
+			// 会话已存在，跳过创建
+			zlog.Info(fmt.Sprintf("会话已存在: %s->%s, session_id=%s", ownerId, contactId, existingSession1.Uuid))
+		}
+
+		// 2. 检查 contactId -> ownerId 的会话是否已存在
+		var existingSession2 model.Session
+		if err := dao.GormDB.Where("send_id = ? AND receive_id = ?", contactId, ownerId).First(&existingSession2).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				// 会话不存在，创建新会话
+				createSessionReq2 := request.CreateSessionRequest{
+					SendId:    contactId,
+					ReceiveId: ownerId,
+				}
+				_, sessionId2, ret2 := SessionService.CreateSession(createSessionReq2)
+				if ret2 != 0 {
+					zlog.Warn(fmt.Sprintf("创建会话失败: %s->%s, ret=%d", contactId, ownerId, ret2))
+				} else {
+					zlog.Info(fmt.Sprintf("创建会话成功: %s->%s, session_id=%s", contactId, ownerId, sessionId2))
+				}
+			} else {
+				zlog.Error(fmt.Sprintf("查询会话失败: %s->%s, error=%s", contactId, ownerId, err.Error()))
+			}
+		} else {
+			// 会话已存在，跳过创建
+			zlog.Info(fmt.Sprintf("会话已存在: %s->%s, session_id=%s", contactId, ownerId, existingSession2.Uuid))
+		}
+
+		// 清除双方的会话列表缓存和联系人列表缓存
+		if err := myredis.DelKeysWithPattern("session_list_" + ownerId); err != nil {
+			zlog.Error(err.Error())
+		}
+		if err := myredis.DelKeysWithPattern("session_list_" + contactId); err != nil {
+			zlog.Error(err.Error())
+		}
 		if err := myredis.DelKeysWithPattern("contact_user_list_" + ownerId); err != nil {
+			zlog.Error(err.Error())
+		}
+		if err := myredis.DelKeysWithPattern("contact_user_list_" + contactId); err != nil {
 			zlog.Error(err.Error())
 		}
 		return "已添加该联系人", 0

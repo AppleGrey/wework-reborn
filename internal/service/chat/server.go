@@ -4,8 +4,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/go-redis/redis/v8"
-	"github.com/gorilla/websocket"
 	"kama_chat_server/internal/dao"
 	"kama_chat_server/internal/dto/request"
 	"kama_chat_server/internal/dto/respond"
@@ -20,6 +18,9 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/go-redis/redis/v8"
+	"github.com/gorilla/websocket"
 )
 
 type Server struct {
@@ -50,7 +51,7 @@ func normalizePath(path string) string {
 	if strings.HasPrefix(path, "http://") || strings.HasPrefix(path, "https://") {
 		return path
 	}
-	
+
 	// 查找 "/static/" 的位置
 	staticIndex := strings.Index(path, "/static/")
 	if staticIndex < 0 {
@@ -59,7 +60,7 @@ func normalizePath(path string) string {
 		zlog.Warn("路径不包含 /static/，返回原路径: " + path)
 		return path
 	}
-	
+
 	// 返回从 "/static/" 开始的部分
 	return path[staticIndex:]
 }
