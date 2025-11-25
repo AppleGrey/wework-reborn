@@ -150,6 +150,7 @@ export async function aliceX3DH(aliceKeys, bobPublicKeyBundle) {
     dhOutputs_length: dhOutputs.length,
     dhOutputs_preview: arrayBufferToBase64(dhOutputs).substring(0, 40),
     sharedSecret_preview: arrayBufferToBase64(sharedSecret).substring(0, 20),
+    note: '这些 DH 输出应该与 Bob 的 DH 输出匹配',
   });
 
   // 返回临时公钥（需要发送给 Bob）
@@ -216,6 +217,8 @@ export async function bobX3DH(bobKeys, alicePublicKeys) {
     dhOutputs_length: dhOutputs.length,
     dhOutputs_preview: arrayBufferToBase64(dhOutputs).substring(0, 40),
     sharedSecret_preview: arrayBufferToBase64(sharedSecret).substring(0, 20),
+    note: '这些 DH 输出应该与 Alice 的 DH 输出匹配',
+    warning: '如果 DH 输出不匹配，说明使用的密钥对不匹配',
   });
 
   return sharedSecret;
