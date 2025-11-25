@@ -521,21 +521,45 @@ export default {
     // 获取未读数量
     const getUnreadCount = async () => {
       try {
+        console.log("📊 [ContactList] 开始获取未读数量...");
+        console.log("📊 [ContactList] 获取前 store 未读数量:", store.state.unreadNotificationCount);
+        
+        // 1. 始终获取并更新全局未读数量（用于导航栏的红色气泡）
+        const globalReq = {
+          user_id: store.state.userInfo.uuid,
+          type: null, // null 表示获取所有类型的未读数量
+        };
+        const globalRsp = await axios.post("/notification/getUnreadCount", globalReq);
+        console.log("📊 [ContactList] 全局未读数量请求返回:", globalRsp.data);
+        
+        if (globalRsp.data.code === 200) {
+          // 后端返回的数据格式可能是 {count: 3} 或者直接是 3
+          let globalUnreadCount = 0;
+          if (typeof globalRsp.data.data === 'object' && globalRsp.data.data !== null) {
+            globalUnreadCount = globalRsp.data.data.count || 0;
+          } else {
+            globalUnreadCount = globalRsp.data.data || 0;
+          }
+          console.log("📊 [ContactList] 准备更新 store，新值（数字）:", globalUnreadCount, "类型:", typeof globalUnreadCount);
+          // 更新 store 中的全局未读数量，用于导航栏红色气泡显示
+          store.commit('setUnreadNotificationCount', globalUnreadCount);
+          console.log("📊 [ContactList] 已更新全局未读数量:", globalUnreadCount);
+          console.log("📊 [ContactList] 更新后 store 未读数量:", store.state.unreadNotificationCount);
+        }
+        
+        // 2. 获取当前过滤类型的未读数量（用于页面内的提示）
         const types = notificationFilterType.value;
-        let totalUnread = 0;
+        let pageUnreadCount = 0;
         
         if (types === null) {
-          const req = {
-            user_id: store.state.userInfo.uuid,
-            type: null,
-          };
-          const rsp = await axios.post("/notification/getUnreadCount", req);
-          if (rsp.data.code === 200) {
-            totalUnread = rsp.data.data || 0;
-            // 更新 store 中的全局未读数量
-            store.commit('setUnreadNotificationCount', totalUnread);
+          // 如果没有过滤，页面内的未读数量就是全局未读数量
+          if (typeof globalRsp.data.data === 'object' && globalRsp.data.data !== null) {
+            pageUnreadCount = globalRsp.data.data.count || 0;
+          } else {
+            pageUnreadCount = globalRsp.data.data || 0;
           }
         } else {
+          // 如果有过滤，计算当前过滤类型的未读数量
           for (const type of types) {
             const req = {
               user_id: store.state.userInfo.uuid,
@@ -543,12 +567,20 @@ export default {
             };
             const rsp = await axios.post("/notification/getUnreadCount", req);
             if (rsp.data.code === 200) {
-              totalUnread += rsp.data.data || 0;
+              // 处理可能的对象格式
+              let count = 0;
+              if (typeof rsp.data.data === 'object' && rsp.data.data !== null) {
+                count = rsp.data.data.count || 0;
+              } else {
+                count = rsp.data.data || 0;
+              }
+              pageUnreadCount += count;
             }
           }
         }
         
-        data.unreadCount = totalUnread;
+        // 页面内显示的未读数量
+        data.unreadCount = pageUnreadCount;
       } catch (error) {
         console.error("获取未读数量失败:", error);
       }
@@ -1139,25 +1171,11 @@ export default {
 
     // 初始化通知列表
     onMounted(() => {
+      console.log("🎬 [ContactList] 组件 mounted，开始初始化");
+      console.log("🎬 [ContactList] mounted 前 store 未读数量:", store.state.unreadNotificationCount);
       getNotificationList();
       getUnreadCount();
-      // 初始化时从后端获取全局未读数量并更新 store
-      const initUnreadCount = async () => {
-        try {
-          const req = {
-            user_id: store.state.userInfo.uuid,
-            type: null, // 获取全部未读数量
-          };
-          const rsp = await axios.post("/notification/getUnreadCount", req);
-          if (rsp.data.code === 200) {
-            const count = rsp.data.data || 0;
-            store.commit('setUnreadNotificationCount', count);
-          }
-        } catch (error) {
-          console.error("初始化未读数量失败:", error);
-        }
-      };
-      initUnreadCount();
+      console.log("🎬 [ContactList] 已调用 getNotificationList 和 getUnreadCount");
     });
 
     return {

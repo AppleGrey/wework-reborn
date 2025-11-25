@@ -915,7 +915,7 @@
 </template>
 
 <script>
-import { reactive, toRefs, onMounted, ref, nextTick } from "vue";
+import { reactive, toRefs, onMounted, onUnmounted, ref, nextTick } from "vue";
 import { useRouter, onBeforeRouteUpdate } from "vue-router";
 import { useStore } from "vuex";
 import axios from "@/utils/axios";
@@ -931,6 +931,7 @@ import {
   receiveAndDecryptMessage,
 } from "@/crypto";
 import { decryptMessageList, decryptMessage } from "@/utils/messageDecryptor";
+import eventBus from "@/utils/eventBus";
 export default {
   name: "ContactChat",
   components: {
@@ -1027,6 +1028,101 @@ export default {
       ableToReceiveOrRejectCall: false,
       ableToStartCall: true,
     });
+    
+    // 统一的聊天消息处理函数
+    const handleChatMessage = async (message) => {
+      console.log("💬 [ContactChat] 收到聊天消息:", message);
+      
+      // 检查消息是否属于当前聊天窗口
+      const isGroupChat = data.contactInfo.contact_id && data.contactInfo.contact_id[0] == "G";
+      const isCurrentChat = 
+        // 群聊：消息的接收方是当前群聊
+        (isGroupChat && message.receive_id == data.contactInfo.contact_id) ||
+        // 单聊：消息是在当前用户和联系人之间发送的
+        (!isGroupChat && 
+          ((message.send_id == data.userInfo.uuid && message.receive_id == data.contactInfo.contact_id) ||
+           (message.send_id == data.contactInfo.contact_id && message.receive_id == data.userInfo.uuid)));
+      
+      if (!isCurrentChat) {
+        console.log("💬 [ContactChat] 消息不属于当前聊天窗口，忽略");
+        return;
+      }
+      
+      if (data.messageList == null) {
+        data.messageList = [];
+      }
+      
+      // 如果是加密消息，先解密
+      let messageToAdd = message;
+      if (message.is_encrypted) {
+        try {
+          console.log("🔓 开始解密 WebSocket 收到的加密消息");
+          messageToAdd = await decryptMessage(message);
+          console.log("✅ 消息解密成功");
+        } catch (error) {
+          console.error("❌ 解密消息失败:", error);
+          // 如果解密失败，显示错误提示，但仍然添加到列表
+          messageToAdd = {
+            ...message,
+            content: `[解密失败: ${error.message}]`,
+          };
+        }
+      }
+      
+      data.messageList.push(messageToAdd);
+      scrollToBottom();
+    };
+    
+    // 统一的 AV 消息处理函数
+    const handleAVMessage = (message) => {
+      console.log("📹 [ContactChat] 收到 AV 消息:", message);
+      
+      var messageAVdata = JSON.parse(message.av_data);
+      if (messageAVdata.messageId === "CURRENT_PEERS") {
+        console.log(
+          "获取CURRENT_PEERS当前在线用户列表，curContactList:",
+          messageAVdata.messageData.curContactList
+        );
+        data.curContactList = messageAVdata.messageData.curContactList;
+      } else if (messageAVdata.messageId === "PEER_JOIN") {
+        console.log(
+          "接受到PEER_JOIN消息，contactId:",
+          messageAVdata.messagecontactId
+        );
+        data.curContactList.push(messageAVdata.messagecontactId);
+      } else if (messageAVdata.messageId === "PEER_LEAVE") {
+        console.log("接收到PEER_LEAVE消息：", data.userInfo.uuid);
+        receiveEndCall();
+      } else if (messageAVdata.messageId === "PROXY") {
+        console.log("接收到PROXY消息：", message);
+        if (messageAVdata.type === "start_call") {
+          ElNotification({
+            title: "消息提示",
+            message: `收到一条来自${message.send_name}的通话请求，请及时前往查看`,
+            type: "warning",
+          });
+          data.ableToReceiveOrRejectCall = true;
+          data.ableToStartCall = false;
+        } else if (messageAVdata.type === "receive_call") {
+          createOffer();
+        } else if (messageAVdata.type === "reject_call") {
+          endCall();
+        } else if (messageAVdata.type === "sdp") {
+          if (messageAVdata.messageData.sdp.type === "offer") {
+            handleOfferSdp(messageAVdata.messageData.sdp);
+          } else if (messageAVdata.messageData.sdp.type === "answer") {
+            handleAnswerSdp(messageAVdata.messageData.sdp);
+          } else {
+            console.log("不支持的sdp类型");
+          }
+        } else if (messageAVdata.type === "candidate") {
+          handleCandidate(messageAVdata.messageData.candidate);
+        } else {
+          console.log("不支持的proxy类型");
+        }
+      }
+    };
+    
     //这是/chat/:id 的id改变时会调用
     onBeforeRouteUpdate(async (to, from, next) => {
       await getChatContactInfo(to.params.id);
@@ -1037,111 +1133,12 @@ export default {
         await getGroupMessageList();
       }
       console.log(data.sessionId);
-      // 设置 WebSocket 消息处理器（复用原有机制，添加解密支持）
-      store.state.socket.onmessage = async (jsonMessage) => {
-        try {
-          const message = JSON.parse(jsonMessage.data);
-          if (message.type != 3) {
-            // 检查消息是否属于当前聊天窗口
-            const isGroupChat = data.contactInfo.contact_id && data.contactInfo.contact_id[0] == "G";
-            const isCurrentChat = 
-              // 群聊：消息的接收方是当前群聊
-              (isGroupChat && message.receive_id == data.contactInfo.contact_id) ||
-              // 单聊：消息是在当前用户和联系人之间发送的
-              (!isGroupChat && 
-                ((message.send_id == data.userInfo.uuid && message.receive_id == data.contactInfo.contact_id) ||
-                 (message.send_id == data.contactInfo.contact_id && message.receive_id == data.userInfo.uuid)));
-            
-              if (isCurrentChat) {
-                console.log("收到消息：", message);
-                if (data.messageList == null) {
-                  data.messageList = [];
-                }
-                
-                // 如果是加密消息，先解密
-                let messageToAdd = message;
-                if (message.is_encrypted) {
-                  try {
-                    console.log("🔓 开始解密 WebSocket 收到的加密消息");
-                    messageToAdd = await decryptMessage(message);
-                    console.log("✅ 消息解密成功");
-                  } catch (error) {
-                    console.error("❌ 解密消息失败:", error);
-                    // 如果解密失败，显示错误提示，但仍然添加到列表
-                    messageToAdd = {
-                      ...message,
-                      content: `[解密失败: ${error.message}]`,
-                    };
-                  }
-                }
-                
-                data.messageList.push(messageToAdd);
-                scrollToBottom();
-              }
-            // 其他接受的消息都不显示在messageList中，而是通过切换页面或刷新页面getMessageList来获取
-          } else {
-            var messageAVdata = JSON.parse(message.av_data); // 后端message的该字段命名为av_data
-            if (messageAVdata.messageId === "CURRENT_PEERS") {
-            console.log(
-              "获取CURRENT_PEERS当前在线用户列表，curContactList:",
-              messageAVdata.messageData.curContactList
-            );
-            data.curContactList = messageAVdata.messageData.curContactList;
-          } else if (messageAVdata.messageId === "PEER_JOIN") {
-            console.log(
-              "接受到PEER_JOIN消息，contactId:",
-              messageAVdata.messagecontactId
-            );
-            data.curContactList.push(messageAVdata.messagecontactId);
-          } else if (messageAVdata.messageId === "PEER_LEAVE") {
-            console.log("接收到PEER_LEAVE消息：", data.userInfo.uuid);
-            receiveEndCall();
-          } else if (messageAVdata.messageId === "PROXY") {
-            console.log("接收到PROXY消息：", message);
-            if (messageAVdata.type === "start_call") {
-              ElNotification({
-                title: "消息提示",
-                message: `收到一条来自${message.send_name}的通话请求，请及时前往查看`,
-                type: "warning",
-              });
-              data.ableToReceiveOrRejectCall = true;
-              data.ableToStartCall = false;
-            } else if (messageAVdata.type === "receive_call") {
-              createOffer();
-            } else if (messageAVdata.type === "reject_call") {
-              endCall();
-            } else if (messageAVdata.type === "sdp") {
-              if (messageAVdata.messageData.sdp.type === "offer") {
-                handleOfferSdp(messageAVdata.messageData.sdp);
-              } else if (messageAVdata.messageData.sdp.type === "answer") {
-                handleAnswerSdp(messageAVdata.messageData.sdp);
-              } else {
-                console.log("不支持的sdp类型");
-              }
-            } else if (messageAVdata.type === "candidate") {
-              handleCandidate(messageAVdata.messageData.candidate);
-            } else {
-              console.log("不支持的proxy类型");
-            }
-          }
-          console.log("收到消息：", message);
-          if (data.messageList == null) {
-            data.messageList = [];
-          }
-          data.messageList.push(message);
-          scrollToBottom();
-          }
-        } catch (error) {
-          console.error("处理消息出错:", error);
-        }
-      };
       scrollToBottom();
-        next();
+      next();
     });
     // 这是刚渲染/chat/:id页面的时候会调用
     onMounted(async () => {
       try {
-        /*  */
         console.log(router.currentRoute.value.params.id);
         await loadAllSessions();
         await getChatContactInfo(router.currentRoute.value.params.id);
@@ -1153,109 +1150,24 @@ export default {
           await getGroupMessageList();
         }
         console.log(data.sessionId);
-        // 设置 WebSocket 消息处理器（复用原有机制，添加解密支持）
-        store.state.socket.onmessage = async (jsonMessage) => {
-          try {
-            const message = JSON.parse(jsonMessage.data);
-            if (message.type != 3) {
-              // 检查消息是否属于当前聊天窗口
-              const isGroupChat = data.contactInfo.contact_id && data.contactInfo.contact_id[0] == "G";
-              const isCurrentChat = 
-                // 群聊：消息的接收方是当前群聊
-                (isGroupChat && message.receive_id == data.contactInfo.contact_id) ||
-                // 单聊：消息是在当前用户和联系人之间发送的
-                (!isGroupChat && 
-                  ((message.send_id == data.userInfo.uuid && message.receive_id == data.contactInfo.contact_id) ||
-                   (message.send_id == data.contactInfo.contact_id && message.receive_id == data.userInfo.uuid)));
-              
-              if (isCurrentChat) {
-                console.log("收到消息：", message);
-                if (data.messageList == null) {
-                  data.messageList = [];
-                }
-                
-                // 如果是加密消息，先解密
-                let messageToAdd = message;
-                if (message.is_encrypted) {
-                  try {
-                    console.log("🔓 开始解密 WebSocket 收到的加密消息");
-                    messageToAdd = await decryptMessage(message);
-                    console.log("✅ 消息解密成功");
-                  } catch (error) {
-                    console.error("❌ 解密消息失败:", error);
-                    // 如果解密失败，显示错误提示，但仍然添加到列表
-                    messageToAdd = {
-                      ...message,
-                      content: `[解密失败: ${error.message}]`,
-                    };
-                  }
-                }
-                
-                data.messageList.push(messageToAdd);
-                scrollToBottom();
-              }
-              // 其他接受的消息都不显示在messageList中，而是通过切换页面或刷新页面getMessageList来获取
-            } else {
-              var messageAVdata = JSON.parse(message.av_data); // 后端message的该字段命名为av_data
-              if (messageAVdata.messageId === "CURRENT_PEERS") {
-              console.log(
-                "获取CURRENT_PEERS当前在线用户列表，curContactList:",
-                messageAVdata.messageData.curContactList
-              );
-              data.curContactList = messageAVdata.messageData.curContactList;
-            } else if (messageAVdata.messageId === "PEER_JOIN") {
-              console.log(
-                "接受到PEER_JOIN消息，contactId:",
-                messageAVdata.messagecontactId
-              );
-              data.curContactList.push(messageAVdata.messagecontactId);
-            } else if (messageAVdata.messageId === "PEER_LEAVE") {
-              console.log("接收到PEER_LEAVE消息：", data.userInfo.uuid);
-              receiveEndCall();
-            } else if (messageAVdata.messageId === "PROXY") {
-              console.log("接收到PROXY消息：", message);
-              if (messageAVdata.type === "start_call") {
-                ElNotification({
-                  title: "消息提示",
-                  message: `收到一条来自${message.send_name}的通话请求，请及时前往查看`,
-                  type: "warning",
-                });
-                data.ableToReceiveOrRejectCall = true;
-                data.ableToStartCall = false;
-              } else if (messageAVdata.type === "reject_call") {
-                endCall();
-              } else if (messageAVdata.type === "receive_call") {
-                console.log("接收到receive_call消息", data.userInfo.nickname);
-                createOffer();
-              } else if (messageAVdata.type === "sdp") {
-                if (messageAVdata.messageData.sdp.type === "offer") {
-                  handleOfferSdp(messageAVdata.messageData.sdp);
-                } else if (messageAVdata.messageData.sdp.type === "answer") {
-                  handleAnswerSdp(messageAVdata.messageData.sdp);
-                } else {
-                  console.log("不支持的sdp类型");
-                }
-              } else if (messageAVdata.type === "candidate") {
-                handleCandidate(messageAVdata.messageData.candidate);
-              } else {
-                console.log("不支持的proxy类型");
-              }
-            }
-              console.log("收到消息：", message);
-              if (data.messageList == null) {
-                data.messageList = [];
-              }
-              data.messageList.push(message);
-              scrollToBottom();
-          }
-        } catch (error) {
-          console.error("处理消息出错:", error);
-        }
-      };
-      scrollToBottom();
+        
+        // 订阅事件总线的消息事件（不再直接设置 onmessage，避免覆盖 App.vue 的处理器）
+        console.log("📡 [ContactChat] 订阅事件总线的消息事件");
+        eventBus.on('chat:message', handleChatMessage);
+        eventBus.on('chat:av_message', handleAVMessage);
+        console.log("📡 [ContactChat] ✅ 已订阅事件总线");
+        
+        scrollToBottom();
       } catch (error) {
         console.error(error);
       }
+    });
+    
+    // 组件卸载时取消订阅
+    onUnmounted(() => {
+      console.log("📡 [ContactChat] 取消订阅事件总线");
+      eventBus.off('chat:message', handleChatMessage);
+      eventBus.off('chat:av_message', handleAVMessage);
     });
     const getChatContactInfo = async (id) => {
       try {

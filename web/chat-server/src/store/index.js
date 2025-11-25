@@ -95,7 +95,10 @@ export default createStore({
       state.notificationFilterType = filterType;
     },
     setUnreadNotificationCount(state, count) {
-      state.unreadNotificationCount = count;
+      // 确保存储的是数字，而不是对象
+      const numericCount = typeof count === 'number' ? count : (typeof count === 'object' && count !== null ? (count.count || 0) : 0);
+      state.unreadNotificationCount = numericCount;
+      console.log("🔄 [Store] setUnreadNotificationCount 被调用，接收到:", count, "存储为:", numericCount);
     },
     incrementUnreadNotificationCount(state) {
       state.unreadNotificationCount += 1;

@@ -125,7 +125,9 @@ export default {
     
     // 计算未读通知数量
     const unreadCount = computed(() => {
-      return store.state.unreadNotificationCount;
+      const count = store.state.unreadNotificationCount || 0;
+      console.log("📊 [NavigationModal] 计算未读数量:", count);
+      return count;
     });
 
     const handleToContactList = () => {
@@ -168,8 +170,8 @@ export default {
 
 .notification-badge {
   position: absolute;
-  top: -5px;
-  right: -5px;
+  top: 8%;
+  right: 8px;
   background-color: #f56c6c;
   color: #ffffff;
   border-radius: 10px;
