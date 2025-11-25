@@ -26,10 +26,17 @@
         hide-after="0"
         enterable="false"
       >
-        <button class="icon-btn" @click="handleToContactList">
+        <button class="icon-btn contact-btn-with-badge" @click="handleToContactList">
           <el-icon>
             <User />
           </el-icon>
+          <!-- 未读通知数量徽章 -->
+          <span 
+            v-if="unreadCount > 0" 
+            class="notification-badge"
+          >
+            {{ unreadCount > 99 ? '99+' : unreadCount }}
+          </span>
         </button>
       </el-tooltip>
       <el-tooltip
@@ -105,7 +112,7 @@
 import { useRouter } from "vue-router";
 import { useStore } from "vuex";
 import { ElMessage } from "element-plus";
-import { reactive, toRefs } from "vue";
+import { reactive, toRefs, computed } from "vue";
 import axios from "@/utils/axios";
 export default {
   name: "NavigationModal",
@@ -114,6 +121,11 @@ export default {
     const store = useStore();
     const data = reactive({
       userInfo: store.state.userInfo,
+    });
+    
+    // 计算未读通知数量
+    const unreadCount = computed(() => {
+      return store.state.unreadNotificationCount;
     });
 
     const handleToContactList = () => {
@@ -138,6 +150,7 @@ export default {
     return {
       ...toRefs(data),
       router,
+      unreadCount,
       handleToContactList,
       handleToSessionList,
       handleToOwnInfo,
@@ -147,3 +160,28 @@ export default {
   },
 };
 </script>
+
+<style scoped>
+.contact-btn-with-badge {
+  position: relative;
+}
+
+.notification-badge {
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  background-color: #f56c6c;
+  color: #ffffff;
+  border-radius: 10px;
+  min-width: 18px;
+  height: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: bold;
+  padding: 0 4px;
+  line-height: 1;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+</style>

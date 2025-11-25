@@ -57,6 +57,19 @@ export default {
       try {
         const message = JSON.parse(jsonMessage.data);
         console.log("🌐 [App.vue] 全局收到 WebSocket 消息：", message);
+        
+        // 处理通知推送消息
+        if (message.type === 'notification') {
+          console.log("🔔 [App.vue] 收到通知推送，未读数量:", message.unread_count);
+          // 只更新未读通知数量，不处理通知对象
+          // 前端打开通知界面时会自动从后端获取完整的通知列表
+          if (message.unread_count !== undefined) {
+            store.commit('setUnreadNotificationCount', message.unread_count);
+            console.log("🔔 [App.vue] 已更新未读通知数量:", message.unread_count);
+          }
+          return;
+        }
+        
         console.log("🌐 [App.vue] globalMessageHandler 是否存在:", !!globalMessageHandler, "类型:", typeof globalMessageHandler);
         
         // 从 window 获取全局消息处理器（由 main.js 管理）

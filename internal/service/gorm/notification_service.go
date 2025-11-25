@@ -6,6 +6,7 @@ import (
 	"kama_chat_server/internal/dao"
 	"kama_chat_server/internal/dto/respond"
 	"kama_chat_server/internal/model"
+	"kama_chat_server/internal/service/chat"
 	"kama_chat_server/pkg/constants"
 	notification_status_enum "kama_chat_server/pkg/enum/notification/notification_status_enum"
 	"kama_chat_server/pkg/util/random"
@@ -26,19 +27,19 @@ var NotificationService = new(notificationService)
 // ret: 0.成功，-1.系统错误，-2.业务错误
 func (n *notificationService) CreateNotification(userId string, notificationType int8, title string, content string, relatedId string, relatedType string, senderId string, senderName string, senderAvatar string, extraData string) (message string, data *model.Notification, ret int) {
 	notification := model.Notification{
-		Uuid:        fmt.Sprintf("N%s", random.GetNowAndLenRandomString(11)),
-		UserId:      userId,
-		Type:        notificationType,
-		Title:       title,
-		Content:     content,
-		RelatedId:   relatedId,
-		RelatedType: relatedType,
-		SenderId:    senderId,
-		SenderName:  senderName,
+		Uuid:         fmt.Sprintf("N%s", random.GetNowAndLenRandomString(11)),
+		UserId:       userId,
+		Type:         notificationType,
+		Title:        title,
+		Content:      content,
+		RelatedId:    relatedId,
+		RelatedType:  relatedType,
+		SenderId:     senderId,
+		SenderName:   senderName,
 		SenderAvatar: senderAvatar,
-		Status:      notification_status_enum.Unread, // 默认未读
-		ExtraData:   extraData,
-		CreatedAt:   time.Now(),
+		Status:       notification_status_enum.Unread, // 默认未读
+		ExtraData:    extraData,
+		CreatedAt:    time.Now(),
 	}
 
 	if res := dao.GormDB.Create(&notification); res.Error != nil {
@@ -47,6 +48,14 @@ func (n *notificationService) CreateNotification(userId string, notificationType
 	}
 
 	zlog.Info(fmt.Sprintf("创建通知成功: uuid=%s, user_id=%s, type=%d", notification.Uuid, userId, notificationType))
+
+	// 获取当前未读通知数量
+	_, unreadCount, _ := n.GetUnreadCount(userId, nil)
+
+	// 通过 WebSocket 推送通知（如果用户在线）
+	// 只推送未读数量，不推送完整通知对象，前端打开通知界面时会自动获取
+	chat.PushNotification(userId, unreadCount)
+
 	return "通知创建成功", &notification, 0
 }
 
@@ -95,18 +104,18 @@ func (n *notificationService) GetNotificationList(userId string, page int, pageS
 	var notificationList []respond.NotificationListItem
 	for _, notification := range notifications {
 		item := respond.NotificationListItem{
-			Uuid:        notification.Uuid,
-			Type:        notification.Type,
-			Title:       notification.Title,
-			Content:     notification.Content,
-			RelatedId:   notification.RelatedId,
-			RelatedType: notification.RelatedType,
-			SenderId:    notification.SenderId,
-			SenderName:  notification.SenderName,
+			Uuid:         notification.Uuid,
+			Type:         notification.Type,
+			Title:        notification.Title,
+			Content:      notification.Content,
+			RelatedId:    notification.RelatedId,
+			RelatedType:  notification.RelatedType,
+			SenderId:     notification.SenderId,
+			SenderName:   notification.SenderName,
 			SenderAvatar: notification.SenderAvatar,
-			Status:      notification.Status,
-			ExtraData:   notification.ExtraData,
-			CreatedAt:   notification.CreatedAt.Format("2006-01-02 15:04:05"),
+			Status:       notification.Status,
+			ExtraData:    notification.ExtraData,
+			CreatedAt:    notification.CreatedAt.Format("2006-01-02 15:04:05"),
 		}
 		if notification.ReadAt.Valid {
 			item.ReadAt = notification.ReadAt.Time.Format("2006-01-02 15:04:05")
@@ -208,4 +217,3 @@ func (n *notificationService) ClearAllNotification(userId string, notificationTy
 	zlog.Info(fmt.Sprintf("清空通知成功: user_id=%s, type=%v, count=%d", userId, notificationType, count))
 	return "清空通知成功", count, 0
 }
-

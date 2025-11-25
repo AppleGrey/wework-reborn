@@ -47,6 +47,7 @@ export default createStore({
     masterKey: initialMasterKey, // 主密钥（从 sessionStorage 加载，如果存在）
     socket: null,
     notificationFilterType: null, // 通知筛选类型：null=全部, 'friend'=好友通知, 'group'=群通知, 'system'=系统消息
+    unreadNotificationCount: 0, // 未读通知数量
   },
   getters: {
   },
@@ -92,6 +93,15 @@ export default createStore({
     },
     setNotificationFilterType(state, filterType) {
       state.notificationFilterType = filterType;
+    },
+    setUnreadNotificationCount(state, count) {
+      state.unreadNotificationCount = count;
+    },
+    incrementUnreadNotificationCount(state) {
+      state.unreadNotificationCount += 1;
+    },
+    decrementUnreadNotificationCount(state, count = 1) {
+      state.unreadNotificationCount = Math.max(0, state.unreadNotificationCount - count);
     }
   },
   actions: {

@@ -531,7 +531,9 @@ export default {
           };
           const rsp = await axios.post("/notification/getUnreadCount", req);
           if (rsp.data.code === 200) {
-            totalUnread = rsp.data.data?.count || 0;
+            totalUnread = rsp.data.data || 0;
+            // 更新 store 中的全局未读数量
+            store.commit('setUnreadNotificationCount', totalUnread);
           }
         } else {
           for (const type of types) {
@@ -541,7 +543,7 @@ export default {
             };
             const rsp = await axios.post("/notification/getUnreadCount", req);
             if (rsp.data.code === 200) {
-              totalUnread += rsp.data.data?.count || 0;
+              totalUnread += rsp.data.data || 0;
             }
           }
         }
@@ -566,7 +568,10 @@ export default {
         const rsp = await axios.post("/notification/markAsRead", req);
         if (rsp.data.code === 200) {
           ElMessage.success("标记成功");
+          const markedCount = rsp.data.data || data.selectedNotifications.length;
           data.selectedNotifications = [];
+          // 更新 store 中的未读数量
+          store.commit('decrementUnreadNotificationCount', markedCount);
           await getNotificationList();
           await getUnreadCount();
         } else {
@@ -1136,6 +1141,23 @@ export default {
     onMounted(() => {
       getNotificationList();
       getUnreadCount();
+      // 初始化时从后端获取全局未读数量并更新 store
+      const initUnreadCount = async () => {
+        try {
+          const req = {
+            user_id: store.state.userInfo.uuid,
+            type: null, // 获取全部未读数量
+          };
+          const rsp = await axios.post("/notification/getUnreadCount", req);
+          if (rsp.data.code === 200) {
+            const count = rsp.data.data || 0;
+            store.commit('setUnreadNotificationCount', count);
+          }
+        } catch (error) {
+          console.error("初始化未读数量失败:", error);
+        }
+      };
+      initUnreadCount();
     });
 
     return {
