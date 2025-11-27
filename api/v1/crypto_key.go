@@ -3,10 +3,11 @@ package v1
 import (
 	"net/http"
 
-	"github.com/gin-gonic/gin"
 	"kama_chat_server/internal/dto/request"
 	"kama_chat_server/internal/service/gorm"
 	"kama_chat_server/pkg/zlog"
+
+	"github.com/gin-gonic/gin"
 )
 
 // GetPublicKeyBundle 获取用户的公钥束
@@ -226,4 +227,3 @@ func RotateSignedPreKey(c *gin.Context) {
 		"message": "轮换密钥成功",
 	})
 }
-

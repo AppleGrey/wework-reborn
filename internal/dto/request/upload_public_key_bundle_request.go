@@ -8,4 +8,3 @@ type UploadPublicKeyBundleRequest struct {
 	SignedPreKey                SignedPreKeyData    `json:"signed_pre_key" binding:"required"`
 	OneTimePreKeys              []OneTimePreKeyData `json:"one_time_pre_keys" binding:"required,min=1"`
 }
-

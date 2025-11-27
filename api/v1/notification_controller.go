@@ -157,4 +157,3 @@ func ClearAllNotification(c *gin.Context) {
 	message, count, ret := gorm.NotificationService.ClearAllNotification(userId, req.Type)
 	JsonBack(c, message, ret, respond.ClearAllNotificationResponse{Count: count})
 }
-
