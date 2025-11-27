@@ -466,7 +466,6 @@ export default {
         
         if (types === null) {
           const req = {
-            user_id: store.state.userInfo.uuid,
             page: 1,
             page_size: 1000,
             type: null,
@@ -479,7 +478,6 @@ export default {
         } else {
           for (const type of types) {
             const req = {
-              user_id: store.state.userInfo.uuid,
               page: 1,
               page_size: 1000,
               type: type,
@@ -526,7 +524,6 @@ export default {
         
         // 1. 始终获取并更新全局未读数量（用于导航栏的红色气泡）
         const globalReq = {
-          user_id: store.state.userInfo.uuid,
           type: null, // null 表示获取所有类型的未读数量
         };
         const globalRsp = await axios.post("/notification/getUnreadCount", globalReq);
@@ -562,7 +559,6 @@ export default {
           // 如果有过滤，计算当前过滤类型的未读数量
           for (const type of types) {
             const req = {
-              user_id: store.state.userInfo.uuid,
               type: type,
             };
             const rsp = await axios.post("/notification/getUnreadCount", req);
@@ -594,7 +590,6 @@ export default {
       }
       try {
         const req = {
-          user_id: store.state.userInfo.uuid,
           notification_ids: data.selectedNotifications,
         };
         const rsp = await axios.post("/notification/markAsRead", req);
@@ -632,7 +627,6 @@ export default {
           }
         );
         const req = {
-          user_id: store.state.userInfo.uuid,
           notification_ids: data.selectedNotifications,
         };
         const rsp = await axios.post("/notification/deleteNotification", req);
@@ -661,7 +655,6 @@ export default {
           type: "warning",
         });
         const req = {
-          user_id: store.state.userInfo.uuid,
           type: null,
         };
         const rsp = await axios.post("/notification/clearAll", req);
@@ -710,7 +703,6 @@ export default {
       if (!isFriendApply && notification.status === 0) {
         try {
           const req = {
-            user_id: store.state.userInfo.uuid,
             notification_ids: [notification.uuid],
           };
           await axios.post("/notification/markAsRead", req);
@@ -744,7 +736,6 @@ export default {
           if (notification.status === 0) {
             try {
               const markReq = {
-                user_id: store.state.userInfo.uuid,
                 notification_ids: [notification.uuid],
               };
               await axios.post("/notification/markAsRead", markReq);
@@ -789,7 +780,6 @@ export default {
           if (notification.status === 0) {
             try {
               const markReq = {
-                user_id: store.state.userInfo.uuid,
                 notification_ids: [notification.uuid],
               };
               await axios.post("/notification/markAsRead", markReq);

@@ -170,12 +170,9 @@ export default {
           return;
         }
 
-        // 第四步：上传公钥束到服务器
+        // 第四步：上传公钥束到服务器（不传递 user_id，后端从 token 中获取，更安全）
         try {
-          const uploadResponse = await axios.post("/crypto/uploadPublicKeyBundle", {
-            user_id: userId,
-            ...cryptoKeys,
-          });
+          const uploadResponse = await axios.post("/crypto/uploadPublicKeyBundle", cryptoKeys);
           if (uploadResponse.data.code === 200) {
             console.log("✅ 公钥束上传成功");
             ElMessage.success("注册成功！(端到端加密已启用)");

@@ -42,7 +42,6 @@ export default {
       try {
         console.log("🔔 [App.vue] 开始获取未读通知数量...");
         const req = {
-          user_id: store.state.userInfo.uuid,
           type: null, // null 表示获取所有类型的未读数量
         };
         const rsp = await axios.post("/notification/getUnreadCount", req);

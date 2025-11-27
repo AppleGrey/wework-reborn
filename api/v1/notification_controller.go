@@ -12,6 +12,17 @@ import (
 
 // GetNotificationList 获取通知列表
 func GetNotificationList(c *gin.Context) {
+	// 从 JWT 获取用户 ID（安全）
+	uuid, exists := c.Get("uuid")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"code":    http.StatusUnauthorized,
+			"message": "未授权",
+		})
+		return
+	}
+	userId := uuid.(string)
+
 	var req request.GetNotificationListRequest
 	if err := c.BindJSON(&req); err != nil {
 		c.JSON(http.StatusOK, gin.H{
@@ -21,7 +32,7 @@ func GetNotificationList(c *gin.Context) {
 		return
 	}
 	message, data, ret := gorm.NotificationService.GetNotificationList(
-		req.UserId,
+		userId, // 使用从 JWT 解析的 userId，不信任前端传递的参数
 		req.Page,
 		req.PageSize,
 		req.Type,
@@ -49,6 +60,17 @@ func GetNotificationList(c *gin.Context) {
 
 // GetUnreadCount 获取未读通知数量
 func GetUnreadCount(c *gin.Context) {
+	// 从 JWT 获取用户 ID（安全）
+	uuid, exists := c.Get("uuid")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"code":    http.StatusUnauthorized,
+			"message": "未授权",
+		})
+		return
+	}
+	userId := uuid.(string)
+
 	var req request.GetUnreadCountRequest
 	if err := c.BindJSON(&req); err != nil {
 		c.JSON(http.StatusOK, gin.H{
@@ -57,12 +79,23 @@ func GetUnreadCount(c *gin.Context) {
 		})
 		return
 	}
-	message, count, ret := gorm.NotificationService.GetUnreadCount(req.UserId, req.Type)
+	message, count, ret := gorm.NotificationService.GetUnreadCount(userId, req.Type)
 	JsonBack(c, message, ret, respond.GetUnreadCountResponse{Count: count})
 }
 
 // MarkAsRead 标记通知为已读
 func MarkAsRead(c *gin.Context) {
+	// 从 JWT 获取用户 ID（安全）
+	uuid, exists := c.Get("uuid")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"code":    http.StatusUnauthorized,
+			"message": "未授权",
+		})
+		return
+	}
+	userId := uuid.(string)
+
 	var req request.MarkAsReadRequest
 	if err := c.BindJSON(&req); err != nil {
 		c.JSON(http.StatusOK, gin.H{
@@ -71,12 +104,23 @@ func MarkAsRead(c *gin.Context) {
 		})
 		return
 	}
-	message, count, ret := gorm.NotificationService.MarkAsRead(req.UserId, req.NotificationIds)
+	message, count, ret := gorm.NotificationService.MarkAsRead(userId, req.NotificationIds)
 	JsonBack(c, message, ret, respond.MarkAsReadResponse{Count: count})
 }
 
 // DeleteNotification 删除通知
 func DeleteNotification(c *gin.Context) {
+	// 从 JWT 获取用户 ID（安全）
+	uuid, exists := c.Get("uuid")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"code":    http.StatusUnauthorized,
+			"message": "未授权",
+		})
+		return
+	}
+	userId := uuid.(string)
+
 	var req request.DeleteNotificationRequest
 	if err := c.BindJSON(&req); err != nil {
 		c.JSON(http.StatusOK, gin.H{
@@ -85,12 +129,23 @@ func DeleteNotification(c *gin.Context) {
 		})
 		return
 	}
-	message, count, ret := gorm.NotificationService.DeleteNotification(req.UserId, req.NotificationIds)
+	message, count, ret := gorm.NotificationService.DeleteNotification(userId, req.NotificationIds)
 	JsonBack(c, message, ret, respond.DeleteNotificationResponse{Count: count})
 }
 
 // ClearAllNotification 清空所有通知
 func ClearAllNotification(c *gin.Context) {
+	// 从 JWT 获取用户 ID（安全）
+	uuid, exists := c.Get("uuid")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"code":    http.StatusUnauthorized,
+			"message": "未授权",
+		})
+		return
+	}
+	userId := uuid.(string)
+
 	var req request.ClearAllNotificationRequest
 	if err := c.BindJSON(&req); err != nil {
 		c.JSON(http.StatusOK, gin.H{
@@ -99,7 +154,7 @@ func ClearAllNotification(c *gin.Context) {
 		})
 		return
 	}
-	message, count, ret := gorm.NotificationService.ClearAllNotification(req.UserId, req.Type)
+	message, count, ret := gorm.NotificationService.ClearAllNotification(userId, req.Type)
 	JsonBack(c, message, ret, respond.ClearAllNotificationResponse{Count: count})
 }
 

@@ -128,7 +128,7 @@ func ReplenishOneTimePreKeys(c *gin.Context) {
 
 // UploadPublicKeyBundle 上传公钥束
 // @Summary 上传公钥束
-// @Description 用户注册后上传公钥束到服务器
+// @Description 用户注册后上传公钥束到服务器（从 JWT 获取用户 ID，安全）
 // @Tags Crypto
 // @Accept json
 // @Produce json
@@ -136,22 +136,23 @@ func ReplenishOneTimePreKeys(c *gin.Context) {
 // @Success 200 {object} map[string]interface{}
 // @Router /crypto/uploadPublicKeyBundle [post]
 func UploadPublicKeyBundle(c *gin.Context) {
-	var req request.UploadPublicKeyBundleRequest
+	// 从 JWT 中间件获取用户 ID（安全）
+	uuid, exists := c.Get("uuid")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"code":    http.StatusUnauthorized,
+			"message": "未授权",
+		})
+		return
+	}
+	userId := uuid.(string)
 
+	var req request.UploadPublicKeyBundleRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		zlog.Error("参数绑定失败: " + err.Error())
 		c.JSON(http.StatusBadRequest, gin.H{
 			"code":    http.StatusBadRequest,
 			"message": "参数错误: " + err.Error(),
-		})
-		return
-	}
-
-	// 验证用户 ID
-	if req.UserId == "" {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"code":    http.StatusBadRequest,
-			"message": "缺少 user_id 参数",
 		})
 		return
 	}
@@ -164,8 +165,8 @@ func UploadPublicKeyBundle(c *gin.Context) {
 		OneTimePreKeys:              req.OneTimePreKeys,
 	}
 
-	// 保存公钥束
-	if err := gorm.CryptoKeyService.SaveUserPublicKeys(req.UserId, cryptoReq); err != nil {
+	// 保存公钥束（使用从 JWT 解析的 userId，不信任前端传递的参数）
+	if err := gorm.CryptoKeyService.SaveUserPublicKeys(userId, cryptoReq); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"code":    http.StatusInternalServerError,
 			"message": "保存公钥束失败: " + err.Error(),
@@ -173,7 +174,7 @@ func UploadPublicKeyBundle(c *gin.Context) {
 		return
 	}
 
-	zlog.Info("用户 " + req.UserId + " 公钥束上传成功")
+	zlog.Info("用户 " + userId + " 公钥束上传成功")
 	c.JSON(http.StatusOK, gin.H{
 		"code":    http.StatusOK,
 		"message": "公钥束上传成功",
