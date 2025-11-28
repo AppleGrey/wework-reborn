@@ -137,48 +137,47 @@ func (s *sessionService) OpenSession(req request.OpenSessionRequest) (string, st
 
 // GetUserSessionList 获取用户会话列表
 func (s *sessionService) GetUserSessionList(ownerId string) (string, []respond.UserSessionListRespond, int) {
-	rspString, err := myredis.GetKeyNilIsErr("session_list_" + ownerId)
-	if err != nil {
-		if errors.Is(err, redis.Nil) {
-			var sessionList []model.Session
-			if res := dao.GormDB.Order("created_at DESC").Where("send_id = ?", ownerId).Find(&sessionList); res.Error != nil {
-				if errors.Is(res.Error, gorm.ErrRecordNotFound) {
-					zlog.Info("未创建用户会话")
-					return "未创建用户会话", nil, 0
-				} else {
-					zlog.Error(res.Error.Error())
-					return constants.SYSTEM_ERROR, nil, -1
-				}
-			}
-			var sessionListRsp []respond.UserSessionListRespond
-			for i := 0; i < len(sessionList); i++ {
-				if sessionList[i].ReceiveId[0] == 'U' {
-					sessionListRsp = append(sessionListRsp, respond.UserSessionListRespond{
-						SessionId: sessionList[i].Uuid,
-						Avatar:    sessionList[i].Avatar,
-						UserId:    sessionList[i].ReceiveId,
-						Username:  sessionList[i].ReceiveName,
-					})
-				}
-			}
-			rspString, err := json.Marshal(sessionListRsp)
-			if err != nil {
-				zlog.Error(err.Error())
-			}
-			if err := myredis.SetKeyEx("session_list_"+ownerId, string(rspString), time.Minute*constants.REDIS_TIMEOUT); err != nil {
-				zlog.Error(err.Error())
-			}
-			return "获取成功", sessionListRsp, 0
+	// 注意：由于未读数是实时变化的，不再从缓存读取，每次都查询数据库
+	var sessionList []model.Session
+	if res := dao.GormDB.Order("created_at DESC").Where("send_id = ?", ownerId).Find(&sessionList); res.Error != nil {
+		if errors.Is(res.Error, gorm.ErrRecordNotFound) {
+			zlog.Info("未创建用户会话")
+			return "未创建用户会话", nil, 0
 		} else {
-			zlog.Error(err.Error())
+			zlog.Error(res.Error.Error())
 			return constants.SYSTEM_ERROR, nil, -1
 		}
 	}
-	var rsp []respond.UserSessionListRespond
-	if err := json.Unmarshal([]byte(rspString), &rsp); err != nil {
-		zlog.Error(err.Error())
+	
+	var sessionListRsp []respond.UserSessionListRespond
+	for i := 0; i < len(sessionList); i++ {
+		if sessionList[i].ReceiveId[0] == 'U' {
+			// 计算未读消息数
+			var unreadCount int64
+			if sessionList[i].LastReadAt.Valid {
+				// 如果有最后阅读时间，统计该时间之后的未读消息
+				dao.GormDB.Model(&model.Message{}).
+					Where("receive_id = ? AND send_id = ? AND created_at > ?", 
+						ownerId, sessionList[i].ReceiveId, sessionList[i].LastReadAt.Time).
+					Count(&unreadCount)
+			} else {
+				// 如果没有最后阅读时间，统计所有接收的消息
+				dao.GormDB.Model(&model.Message{}).
+					Where("receive_id = ? AND send_id = ?", 
+						ownerId, sessionList[i].ReceiveId).
+					Count(&unreadCount)
+			}
+			
+			sessionListRsp = append(sessionListRsp, respond.UserSessionListRespond{
+				SessionId:   sessionList[i].Uuid,
+				Avatar:      sessionList[i].Avatar,
+				UserId:      sessionList[i].ReceiveId,
+				Username:    sessionList[i].ReceiveName,
+				UnreadCount: unreadCount,
+			})
+		}
 	}
-	return "获取成功", rsp, 0
+	return "获取成功", sessionListRsp, 0
 }
 
 // GetGroupSessionList 获取群聊会话列表
@@ -251,4 +250,38 @@ func (s *sessionService) DeleteSession(ownerId, sessionId string) (string, int) 
 		zlog.Error(err.Error())
 	}
 	return "删除成功", 0
+}
+
+// MarkSessionAsRead 标记会话已读
+func (s *sessionService) MarkSessionAsRead(sessionId string) (string, int) {
+	var session model.Session
+	if res := dao.GormDB.Where("uuid = ?", sessionId).First(&session); res.Error != nil {
+		if errors.Is(res.Error, gorm.ErrRecordNotFound) {
+			zlog.Error("会话不存在: " + sessionId)
+			return "会话不存在", -1
+		}
+		zlog.Error(res.Error.Error())
+		return constants.SYSTEM_ERROR, -1
+	}
+
+	// 更新最后阅读时间为当前时间
+	now := time.Now()
+	session.LastReadAt.Time = now
+	session.LastReadAt.Valid = true
+
+	if res := dao.GormDB.Save(&session); res.Error != nil {
+		zlog.Error("更新会话阅读时间失败: " + res.Error.Error())
+		return constants.SYSTEM_ERROR, -1
+	}
+
+	// 清除相关缓存
+	if err := myredis.DelKeysWithPattern("session_list_" + session.SendId); err != nil {
+		zlog.Error(err.Error())
+	}
+	if err := myredis.DelKeysWithPattern("session_list_" + session.ReceiveId); err != nil {
+		zlog.Error(err.Error())
+	}
+
+	zlog.Info(fmt.Sprintf("会话 %s 已标记为已读", sessionId))
+	return "标记已读成功", 0
 }

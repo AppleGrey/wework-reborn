@@ -518,8 +518,9 @@
                         </div>
                       </div>
 
-                      <div class="left-message-content">
+                      <div class="left-message-content" :class="{ 'unread-message': messageItem.is_unread }">
                         <span v-if="messageItem.is_encrypted" style="color: #67c23a; font-size: 12px; margin-right: 4px;">🔒</span>
+                        <span v-if="messageItem.is_unread" class="unread-indicator"></span>
                         {{ messageItem.content }}
                       </div>
                     </div>
@@ -1071,6 +1072,19 @@ export default {
       
       data.messageList.push(messageToAdd);
       scrollToBottom();
+      
+      // 如果收到的是对方发来的消息（不是自己发的），实时标记为已读
+      const isReceivedMessage = message.receive_id == data.userInfo.uuid;
+      if (isReceivedMessage && data.sessionId) {
+        try {
+          await axios.post(store.state.backendUrl + "/session/markAsRead", {
+            session_id: data.sessionId
+          });
+          console.log("✅ [ContactChat] 实时标记会话已读（收到新消息）");
+        } catch (error) {
+          console.error("❌ [ContactChat] 实时标记会话已读失败:", error);
+        }
+      }
     };
     
     // 统一的 AV 消息处理函数
@@ -1150,6 +1164,18 @@ export default {
           await getGroupMessageList();
         }
         console.log(data.sessionId);
+        
+        // 标记会话为已读
+        if (data.sessionId) {
+          try {
+            await axios.post(store.state.backendUrl + "/session/markAsRead", {
+              session_id: data.sessionId
+            });
+            console.log("✅ [ContactChat] 会话已标记为已读");
+          } catch (error) {
+            console.error("❌ [ContactChat] 标记会话已读失败:", error);
+          }
+        }
         
         // 订阅事件总线的消息事件（不再直接设置 onmessage，避免覆盖 App.vue 的处理器）
         console.log("📡 [ContactChat] 订阅事件总线的消息事件");
@@ -3088,6 +3114,23 @@ h3 {
   background: #4facfe;
   border: none;
   color: #ffffff;
+}
+
+/* 未读消息样式 */
+.unread-message {
+  position: relative;
+  background-color: #f0f9ff !important; /* 浅蓝色背景 */
+  border-left: 3px solid #409EFF !important; /* 左侧蓝色边框 */
+}
+
+.unread-indicator {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  background-color: #f56c6c;
+  border-radius: 50%;
+  margin-right: 6px;
+  vertical-align: middle;
 }
 </style>
 

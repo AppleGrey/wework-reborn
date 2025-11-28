@@ -13,18 +13,19 @@ type GetMessageListRespond struct {
 	FileName   string `json:"file_name"`
 	FileSize   string `json:"file_size"`
 	CreatedAt  string `json:"created_at"` // 先用CreatedAt排序，后面考虑改成SentAt
-	
+	IsUnread   bool   `json:"is_unread"`  // 是否未读（对于接收者）
+
 	// 加密相关字段
-	IsEncrypted                bool   `json:"is_encrypted"`
-	EncryptionVersion          int    `json:"encryption_version,omitempty"`
-	MessageType                string `json:"message_type,omitempty"`
-	SenderIdentityKey          string `json:"sender_identity_key,omitempty"`
+	IsEncrypted                 bool   `json:"is_encrypted"`
+	EncryptionVersion           int    `json:"encryption_version,omitempty"`
+	MessageType                 string `json:"message_type,omitempty"`
+	SenderIdentityKey           string `json:"sender_identity_key,omitempty"`
 	SenderIdentityKeyCurve25519 string `json:"sender_identity_key_curve25519,omitempty"`
-	SenderEphemeralKey         string `json:"sender_ephemeral_key,omitempty"`
-	UsedOneTimePreKeyId        *int   `json:"used_one_time_pre_key_id,omitempty"`
-	RatchetKey            string `json:"ratchet_key,omitempty"`
-	Counter               *int   `json:"counter,omitempty"`
-	PrevCounter           *int   `json:"prev_counter,omitempty"`
-	IV                    string `json:"iv,omitempty"`
-	AuthTag               string `json:"auth_tag,omitempty"`
+	SenderEphemeralKey          string `json:"sender_ephemeral_key,omitempty"`
+	UsedOneTimePreKeyId         *int   `json:"used_one_time_pre_key_id,omitempty"`
+	RatchetKey                  string `json:"ratchet_key,omitempty"`
+	Counter                     *int   `json:"counter,omitempty"`
+	PrevCounter                 *int   `json:"prev_counter,omitempty"`
+	IV                          string `json:"iv,omitempty"`
+	AuthTag                     string `json:"auth_tag,omitempty"`
 }

@@ -26,9 +26,13 @@
                     v-for="session in allSessionList"
                     :key="session.id"
                     @click="handleToSession(session)"
+                    style="position: relative;"
                   >
                     <img :src="session.avatar" class="sessionlist-avatar" />
                     {{ session.name }}
+                    <span v-if="session.unread_count > 0" class="session-unread-badge">
+                      {{ session.unread_count > 99 ? '99+' : session.unread_count }}
+                    </span>
                   </el-menu-item>
                 </el-menu>
               </div>
@@ -460,5 +464,20 @@ h3 {
   width: 30px;
   height: 30px;
   margin-right: 20px;
+}
+
+.session-unread-badge {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  background-color: #f56c6c;
+  color: white;
+  border-radius: 10px;
+  padding: 2px 6px;
+  font-size: 12px;
+  font-weight: bold;
+  min-width: 18px;
+  text-align: center;
 }
 </style>

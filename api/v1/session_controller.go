@@ -1,12 +1,13 @@
 package v1
 
 import (
-	"github.com/gin-gonic/gin"
 	"kama_chat_server/internal/dto/request"
 	"kama_chat_server/internal/service/gorm"
 	"kama_chat_server/pkg/constants"
 	"kama_chat_server/pkg/zlog"
 	"net/http"
+
+	"github.com/gin-gonic/gin"
 )
 
 // OpenSession 打开会话
@@ -82,4 +83,19 @@ func CheckOpenSessionAllowed(c *gin.Context) {
 	}
 	message, res, ret := gorm.SessionService.CheckOpenSessionAllowed(req.SendId, req.ReceiveId)
 	JsonBack(c, message, ret, res)
+}
+
+// MarkSessionAsRead 标记会话已读
+func MarkSessionAsRead(c *gin.Context) {
+	var req request.MarkSessionAsReadRequest
+	if err := c.BindJSON(&req); err != nil {
+		zlog.Error(err.Error())
+		c.JSON(http.StatusOK, gin.H{
+			"code":    500,
+			"message": constants.SYSTEM_ERROR,
+		})
+		return
+	}
+	message, ret := gorm.SessionService.MarkSessionAsRead(req.SessionId)
+	JsonBack(c, message, ret, nil)
 }

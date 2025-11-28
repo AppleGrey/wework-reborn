@@ -11,6 +11,7 @@ import (
 	"kama_chat_server/pkg/zlog"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/gin-gonic/gin"
 )
@@ -27,6 +28,16 @@ func (m *messageService) GetMessageList(userOneId, userTwoId string) (string, []
 	if res := dao.GormDB.Where("(send_id = ? AND receive_id = ?) OR (send_id = ? AND receive_id = ?)", userOneId, userTwoId, userTwoId, userOneId).Order("created_at ASC").Find(&messageList); res.Error != nil {
 		zlog.Error(res.Error.Error())
 		return constants.SYSTEM_ERROR, nil, -1
+	}
+
+	// 查询会话的最后阅读时间（userOneId 对这个会话的阅读位置）
+	var session model.Session
+	var lastReadAt *time.Time
+	if res := dao.GormDB.Where("(send_id = ? AND receive_id = ?) OR (send_id = ? AND receive_id = ?)", 
+		userOneId, userTwoId, userTwoId, userOneId).First(&session); res.Error == nil {
+		if session.LastReadAt.Valid {
+			lastReadAt = &session.LastReadAt.Time
+		}
 	}
 
 	// 收集所有唯一的 send_id，批量查询用户信息
@@ -70,6 +81,16 @@ func (m *messageService) GetMessageList(userOneId, userTwoId string) (string, []
 			sendAvatar = user.Avatar
 		}
 
+		// 判断消息是否未读
+		// 1. 消息是接收的（receive_id == userOneId）
+		// 2. 且 created_at > last_read_at（或 last_read_at 为空）
+		isUnread := false
+		if message.ReceiveId == userOneId {
+			if lastReadAt == nil || message.CreatedAt.After(*lastReadAt) {
+				isUnread = true
+			}
+		}
+
 		rspList = append(rspList, respond.GetMessageListRespond{
 			Uuid:       message.Uuid, // 消息 UUID
 			SendId:     message.SendId,
@@ -83,6 +104,7 @@ func (m *messageService) GetMessageList(userOneId, userTwoId string) (string, []
 			FileName:   message.FileName,
 			FileSize:   message.FileSize,
 			CreatedAt:  message.CreatedAt.Format("2006-01-02 15:04:05"),
+			IsUnread:   isUnread,
 
 			// 加密相关字段
 			IsEncrypted:                 message.IsEncrypted,

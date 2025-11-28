@@ -66,6 +66,7 @@ func init() {
 		auth.POST("session/getGroupSessionList", v1.GetGroupSessionList)
 		auth.POST("session/deleteSession", v1.DeleteSession)
 		auth.POST("session/checkOpenSessionAllowed", v1.CheckOpenSessionAllowed)
+		auth.POST("session/markAsRead", v1.MarkSessionAsRead)
 		auth.POST("contact/getUserList", v1.GetUserList)
 		auth.POST("contact/loadMyJoinedGroup", v1.LoadMyJoinedGroup)
 		auth.POST("contact/getContactInfo", v1.GetContactInfo)
