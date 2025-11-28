@@ -112,6 +112,15 @@ export default {
         // 2. 处理聊天消息（文本、文件等）
         if (typeof message.type === 'number' && message.type !== 3) {
           console.log("💬 [App.vue] 收到聊天消息，通过事件总线分发");
+          
+          // 如果是接收到的消息（不是自己发的），更新未读数
+          const isReceivedMessage = message.receive_id === store.state.userInfo.uuid;
+          if (isReceivedMessage) {
+            console.log("📬 [App.vue] 收到新消息，更新未读数");
+            // 通知 SessionList 刷新会话列表（以获取最新的未读数）
+            eventBus.emit('chat:new_message_received', message);
+          }
+          
           // 通过事件总线分发给 ContactChat.vue
           eventBus.emit('chat:message', message);
           return;

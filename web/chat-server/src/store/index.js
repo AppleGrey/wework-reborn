@@ -48,6 +48,8 @@ export default createStore({
     socket: null,
     notificationFilterType: null, // 通知筛选类型：null=全部, 'friend'=好友通知, 'group'=群通知, 'system'=系统消息
     unreadNotificationCount: 0, // 未读通知数量
+    sessionUnreadCounts: {}, // 每个会话的未读消息数 { sessionId: count }
+    totalUnreadMessageCount: 0, // 总的未读聊天消息数
   },
   getters: {
   },
@@ -105,6 +107,37 @@ export default createStore({
     },
     decrementUnreadNotificationCount(state, count = 1) {
       state.unreadNotificationCount = Math.max(0, state.unreadNotificationCount - count);
+    },
+    // 设置所有会话的未读数（用于登录时批量加载）
+    setSessionUnreadCounts(state, sessionUnreadMap) {
+      state.sessionUnreadCounts = { ...sessionUnreadMap };
+      // 计算总的未读数
+      state.totalUnreadMessageCount = Object.values(sessionUnreadMap).reduce((sum, count) => sum + count, 0);
+      console.log("🔄 [Store] 设置会话未读数:", state.sessionUnreadCounts, "总数:", state.totalUnreadMessageCount);
+    },
+    // 增加某个会话的未读数
+    incrementSessionUnreadCount(state, sessionId) {
+      if (!state.sessionUnreadCounts[sessionId]) {
+        state.sessionUnreadCounts[sessionId] = 0;
+      }
+      state.sessionUnreadCounts[sessionId] += 1;
+      state.totalUnreadMessageCount += 1;
+      console.log(`🔄 [Store] 会话 ${sessionId} 未读数 +1，当前: ${state.sessionUnreadCounts[sessionId]}, 总数: ${state.totalUnreadMessageCount}`);
+    },
+    // 清除某个会话的未读数（进入会话时调用）
+    clearSessionUnreadCount(state, sessionId) {
+      const oldCount = state.sessionUnreadCounts[sessionId] || 0;
+      if (oldCount > 0) {
+        state.sessionUnreadCounts[sessionId] = 0;
+        state.totalUnreadMessageCount = Math.max(0, state.totalUnreadMessageCount - oldCount);
+        console.log(`🔄 [Store] 清除会话 ${sessionId} 未读数（原: ${oldCount}），总数: ${state.totalUnreadMessageCount}`);
+      }
+    },
+    // 清除所有会话的未读数
+    clearAllSessionUnreadCounts(state) {
+      state.sessionUnreadCounts = {};
+      state.totalUnreadMessageCount = 0;
+      console.log("🔄 [Store] 清除所有会话未读数");
     }
   },
   actions: {

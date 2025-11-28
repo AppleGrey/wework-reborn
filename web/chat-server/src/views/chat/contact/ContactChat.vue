@@ -1081,6 +1081,9 @@ export default {
             session_id: data.sessionId
           });
           console.log("✅ [ContactChat] 实时标记会话已读（收到新消息）");
+          
+          // 清除 Vuex 中该会话的未读数
+          store.commit('clearSessionUnreadCount', data.sessionId);
         } catch (error) {
           console.error("❌ [ContactChat] 实时标记会话已读失败:", error);
         }
@@ -1172,6 +1175,9 @@ export default {
               session_id: data.sessionId
             });
             console.log("✅ [ContactChat] 会话已标记为已读");
+            
+            // 清除 Vuex 中该会话的未读数
+            store.commit('clearSessionUnreadCount', data.sessionId);
           } catch (error) {
             console.error("❌ [ContactChat] 标记会话已读失败:", error);
           }

@@ -13,10 +13,17 @@
         hide-after="0"
         enterable="false"
       >
-        <button class="icon-btn" @click="handleToSessionList">
+        <button class="icon-btn session-btn-with-badge" @click="handleToSessionList">
           <el-icon>
             <ChatRound />
           </el-icon>
+          <!-- 未读聊天消息数量徽章 -->
+          <span 
+            v-if="unreadMessageCount > 0" 
+            class="notification-badge"
+          >
+            {{ unreadMessageCount > 99 ? '99+' : unreadMessageCount }}
+          </span>
         </button>
       </el-tooltip>
       <el-tooltip
@@ -126,7 +133,14 @@ export default {
     // 计算未读通知数量
     const unreadCount = computed(() => {
       const count = store.state.unreadNotificationCount || 0;
-      console.log("📊 [NavigationModal] 计算未读数量:", count);
+      console.log("📊 [NavigationModal] 计算未读通知数量:", count);
+      return count;
+    });
+    
+    // 计算未读聊天消息数量
+    const unreadMessageCount = computed(() => {
+      const count = store.state.totalUnreadMessageCount || 0;
+      console.log("📊 [NavigationModal] 计算未读消息数量:", count);
       return count;
     });
 
@@ -153,6 +167,7 @@ export default {
       ...toRefs(data),
       router,
       unreadCount,
+      unreadMessageCount,
       handleToContactList,
       handleToSessionList,
       handleToOwnInfo,
@@ -164,7 +179,8 @@ export default {
 </script>
 
 <style scoped>
-.contact-btn-with-badge {
+.contact-btn-with-badge,
+.session-btn-with-badge {
   position: relative;
 }
 
