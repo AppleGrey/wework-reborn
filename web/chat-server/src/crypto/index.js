@@ -60,5 +60,6 @@ export {
   receiveAndDecryptMessage,
   hasSession,
   deleteSession,
+  updateRatchetKeyOnly,
 } from './sessionManager';
 

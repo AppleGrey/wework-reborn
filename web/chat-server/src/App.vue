@@ -3,11 +3,13 @@
 </template>
 
 <script>
-import { onMounted, onUnmounted } from "vue";
+import { onMounted, onUnmounted, watch } from "vue";
 import { useStore } from "vuex";
 import { useRouter } from "vue-router";
 import axios from "@/utils/axios";
 import { ElMessage } from "element-plus";
+import eventBus from "@/utils/eventBus";
+import { setCurrentUserId } from "@/crypto/cryptoStore";
 
 export default {
   name: "App",
@@ -35,6 +37,33 @@ export default {
       }
     };
     
+    // 获取未读通知数量
+    const getUnreadNotificationCount = async () => {
+      try {
+        console.log("🔔 [App.vue] 开始获取未读通知数量...");
+        const req = {
+          type: null, // null 表示获取所有类型的未读数量
+        };
+        const rsp = await axios.post("/notification/getUnreadCount", req);
+        if (rsp.data.code === 200) {
+          // 后端返回的数据格式可能是 {count: 3} 或者直接是 3
+          let unreadCount = 0;
+          if (typeof rsp.data.data === 'object' && rsp.data.data !== null) {
+            unreadCount = rsp.data.data.count || 0;
+          } else {
+            unreadCount = rsp.data.data || 0;
+          }
+          console.log("🔔 [App.vue] 获取到未读通知数量:", unreadCount);
+          store.commit('setUnreadNotificationCount', unreadCount);
+          console.log("🔔 [App.vue] 已更新 store 中的未读数量");
+        } else {
+          console.error("🔔 [App.vue] 获取未读数量失败:", rsp.data.message);
+        }
+      } catch (error) {
+        console.error("🔔 [App.vue] 获取未读通知数量出错:", error);
+      }
+    };
+    
     const logout = async () => {
       store.commit("cleanUserInfo");
       const req = {
@@ -52,59 +81,101 @@ export default {
       }
     };
     
-    // 全局 WebSocket 消息处理器
+    // 全局 WebSocket 消息处理器 - 作为唯一的消息入口
     const handleWebSocketMessage = async (jsonMessage) => {
       try {
+        // 跳过非 JSON 消息（如服务器欢迎消息）
+        if (typeof jsonMessage.data !== 'string' || !jsonMessage.data.trim().startsWith('{')) {
+          console.log("🌐 [App.vue] 收到非 JSON 消息（已忽略）:", jsonMessage.data);
+          return;
+        }
+        
         const message = JSON.parse(jsonMessage.data);
         console.log("🌐 [App.vue] 全局收到 WebSocket 消息：", message);
-        console.log("🌐 [App.vue] globalMessageHandler 是否存在:", !!globalMessageHandler, "类型:", typeof globalMessageHandler);
         
-        // 从 window 获取全局消息处理器（由 main.js 管理）
-        const handler = window._globalMessageHandler;
-        console.log("🌐 [App.vue] globalMessageHandler 是否存在:", !!handler, "类型:", typeof handler);
-        
-        // 如果有注册的全局消息处理器（由 ContactChat 组件注册），则调用它
-        if (handler && typeof handler === 'function') {
-          console.log("🌐 [App.vue] 调用 globalMessageHandler");
-          try {
-            // 如果处理器是异步的，需要 await
-            const result = handler(jsonMessage);
-            if (result instanceof Promise) {
-              await result;
-            }
-            console.log("🌐 [App.vue] globalMessageHandler 执行完成");
-          } catch (handlerError) {
-            console.error("🌐 [App.vue] globalMessageHandler 执行失败:", handlerError);
-            console.error("🌐 [App.vue] 错误堆栈:", handlerError.stack);
+        // 1. 优先处理通知推送消息
+        if (message.type === 'notification') {
+          console.log("🔔 [App.vue] 收到通知推送，未读数量:", message.unread_count);
+          // 只更新未读通知数量，不处理通知对象
+          // 前端打开通知界面时会自动从后端获取完整的通知列表
+          if (message.unread_count !== undefined && message.unread_count !== null) {
+            const count = Number(message.unread_count);
+            console.log("🔔 [App.vue] 更新前 store 中的未读数量:", store.state.unreadNotificationCount);
+            store.commit('setUnreadNotificationCount', count);
+            console.log("🔔 [App.vue] 更新后 store 中的未读数量:", store.state.unreadNotificationCount);
+          } else {
+            console.warn("🔔 [App.vue] 未读数量无效:", message.unread_count);
           }
-        } else {
-          // 如果没有注册的处理器，说明不在聊天页面，可以在这里处理其他逻辑
-          // 比如更新会话列表、显示通知等
-          console.log("🌐 [App.vue] ⚠️ 当前不在聊天页面，消息已接收但未处理");
+          return; // 通知消息处理完毕，不再传递给其他组件
         }
+        
+        // 2. 处理聊天消息（文本、文件等）
+        if (typeof message.type === 'number' && message.type !== 3) {
+          console.log("💬 [App.vue] 收到聊天消息，通过事件总线分发");
+          
+          // 如果是接收到的消息（不是自己发的），更新未读数
+          const isReceivedMessage = message.receive_id === store.state.userInfo.uuid;
+          if (isReceivedMessage) {
+            console.log("📬 [App.vue] 收到新消息，更新未读数");
+            // 通知 SessionList 刷新会话列表（以获取最新的未读数）
+            eventBus.emit('chat:new_message_received', message);
+          }
+          
+          // 通过事件总线分发给 ContactChat.vue
+          eventBus.emit('chat:message', message);
+          return;
+        }
+        
+        // 3. 处理 AV 消息（type = 3）
+        if (message.type === 3) {
+          console.log("📹 [App.vue] 收到 AV 消息，通过事件总线分发");
+          // 通过事件总线分发给 ContactChat.vue
+          eventBus.emit('chat:av_message', message);
+          return;
+        }
+        
+        // 4. 其他未知类型的消息
+        console.warn("⚠️ [App.vue] 收到未知类型的消息:", message);
       } catch (error) {
         console.error("🌐 [App.vue] 处理 WebSocket 消息失败：", error);
         console.error("🌐 [App.vue] 错误堆栈:", error.stack);
       }
     };
     
+    // 设置 WebSocket 消息处理器的函数（可复用）
+    const setupWebSocketHandler = () => {
+      if (store.state.socket) {
+        console.log("🌐 [App.vue] 设置唯一的全局消息处理器");
+        // 清除所有旧的监听器
+        const oldOnMessage = store.state.socket.onmessage;
+        if (oldOnMessage) {
+          store.state.socket.removeEventListener('message', oldOnMessage);
+        }
+        // 设置唯一的全局消息处理器
+        store.state.socket.onmessage = handleWebSocketMessage;
+        console.log("🌐 [App.vue] ✅ 已设置唯一的全局消息处理器，所有消息将在此统一处理");
+      }
+    };
+    
     onMounted(() => {
       if (store.state.userInfo.uuid) {
+        // 设置当前用户 ID，确保 IndexedDB 数据隔离
+        setCurrentUserId(store.state.userInfo.uuid);
+        console.log(`🔐 [App.vue] 已设置当前用户 ID: ${store.state.userInfo.uuid}`);
+        
         getUserInfo();
+        
+        // 初始化时获取未读通知数量
+        getUnreadNotificationCount();
+        
         if (store.state.userInfo.status == 1) {
           logout();
         }
         
         // 如果 WebSocket 已存在（可能是 Login.vue 创建的），重新设置消息处理器
         if (store.state.socket && store.state.socket.readyState === WebSocket.OPEN) {
-          console.log("🌐 [App.vue] WebSocket 已存在且已连接，重新设置全局消息处理器");
-          // 移除旧的监听器（如果有）
-          store.state.socket.removeEventListener('message', handleWebSocketMessage);
-          // 设置全局消息处理器（覆盖 Login.vue 设置的简单处理器）
-          store.state.socket.onmessage = handleWebSocketMessage;
-          // 也使用 addEventListener 作为备份
-          store.state.socket.addEventListener('message', handleWebSocketMessage);
-          console.log("🌐 [App.vue] 已重新设置全局消息处理器");
+          console.log("🌐 [App.vue] WebSocket 已存在且已连接");
+          setupWebSocketHandler();
           return;
         }
         
@@ -118,13 +189,8 @@ export default {
           console.log("🌐 [App.vue] WebSocket连接已打开");
           console.log("🌐 [App.vue] 连接信令服务器成功");
         };
-        // 设置全局消息处理器
-        store.state.socket.onmessage = handleWebSocketMessage;
-        console.log("🌐 [App.vue] 已设置全局消息处理器 handleWebSocketMessage");
-        
-        // 也使用 addEventListener 作为备份，确保不会被覆盖
-        store.state.socket.addEventListener('message', handleWebSocketMessage);
-        console.log("🌐 [App.vue] 已使用 addEventListener 注册消息处理器");
+        // 设置唯一的全局消息处理器
+        setupWebSocketHandler();
         
         store.state.socket.onclose = () => {
           console.log("🌐 [App.vue] WebSocket连接已关闭");
@@ -138,11 +204,52 @@ export default {
       }
     });
     
+    // 监听 WebSocket 对象的变化（登录后会创建新的 WebSocket）
+    watch(
+      () => store.state.socket,
+      (newSocket, oldSocket) => {
+        if (newSocket && newSocket !== oldSocket) {
+          console.log("🌐 [App.vue] 检测到 WebSocket 对象变化，重新设置消息处理器");
+          // 等待连接建立后设置处理器
+          if (newSocket.readyState === WebSocket.OPEN) {
+            setupWebSocketHandler();
+          } else {
+            // 监听 onopen 事件
+            const originalOnOpen = newSocket.onopen;
+            newSocket.onopen = (event) => {
+              console.log("🌐 [App.vue] WebSocket 连接已建立（通过 watch 监听）");
+              if (originalOnOpen) {
+                originalOnOpen.call(newSocket, event);
+              }
+              setupWebSocketHandler();
+            };
+          }
+        }
+      },
+      { immediate: true }
+    );
+    
+    // 监听用户信息的变化（登录后会设置用户信息）
+    watch(
+      () => store.state.userInfo.uuid,
+      (newUuid, oldUuid) => {
+        if (newUuid && newUuid !== oldUuid) {
+          console.log("🔔 [App.vue] 检测到用户登录");
+          
+          // 设置当前用户 ID，确保 IndexedDB 数据隔离
+          setCurrentUserId(newUuid);
+          console.log(`🔐 [App.vue] 已设置当前用户 ID: ${newUuid}`);
+          
+          // 获取未读通知数量
+          getUnreadNotificationCount();
+        }
+      }
+    );
+    
     onUnmounted(() => {
-      // 不要删除 window.setGlobalMessageHandler，因为其他组件可能还需要使用
-      // 只清理消息处理器引用
-      window._globalMessageHandler = null;
-      console.log("🌐 [App.vue] onUnmounted: 已清理 globalMessageHandler 引用");
+      // 清理事件总线
+      eventBus.clear();
+      console.log("🌐 [App.vue] onUnmounted: 已清理事件总线");
     });
   },
 };

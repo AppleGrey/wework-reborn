@@ -2,8 +2,9 @@ package model
 
 import (
 	"database/sql"
-	"gorm.io/gorm"
 	"time"
+
+	"gorm.io/gorm"
 )
 
 type Session struct {
@@ -14,7 +15,8 @@ type Session struct {
 	ReceiveName   string         `gorm:"column:receive_name;type:varchar(20);not null;comment:名称"`
 	Avatar        string         `gorm:"column:avatar;type:char(255);default:default_avatar.png;not null;comment:头像"`
 	LastMessage   string         `gorm:"column:last_message;type:TEXT;comment:最新的消息"`
-	LastMessageAt sql.NullTime      `gorm:"column:last_message_at;type:timestamp;comment:最近接收时间"`
+	LastMessageAt sql.NullTime   `gorm:"column:last_message_at;type:timestamp;comment:最近接收时间"`
+	LastReadAt    sql.NullTime   `gorm:"column:last_read_at;type:timestamp;comment:最后阅读时间"`
 	CreatedAt     time.Time      `gorm:"column:created_at;Index;type:timestamp;comment:创建时间"`
 	DeletedAt     gorm.DeletedAt `gorm:"column:deleted_at;Index;type:timestamp;comment:删除时间"`
 }

@@ -58,6 +58,12 @@ export async function createSession(masterKey, contactId, remotePublicKeyBundle)
     receivingChainKey_length: initialKeys.receivingChainKey?.length || 0,
     receivingChainKey_preview: initialKeys.receivingChainKey ? arrayBufferToBase64(initialKeys.receivingChainKey).substring(0, 20) : null,
   });
+  
+  // 添加验证提示
+  console.log('🔍 Alice 密钥验证提示:', {
+    alice_sendingChainKey_preview: initialKeys.sendingChainKey ? arrayBufferToBase64(initialKeys.sendingChainKey).substring(0, 20) : null,
+    note: 'Alice 的 sendingChainKey 应该等于 Bob 的 receivingChainKey',
+  });
 
   // 5. 生成初始 DH 棘轮密钥对
   const initialRatchetKeyPair = generateRatchetKeyPair();
@@ -118,6 +124,16 @@ export async function createSession(masterKey, contactId, remotePublicKeyBundle)
  */
 export async function acceptSession(masterKey, contactId, aliceInitData) {
   console.log('接受会话，contactId:', contactId);
+  console.log('📥 Bob 收到的 Alice 初始化数据:', {
+    has_identity_key: !!aliceInitData.identity_key,
+    has_identity_key_curve25519: !!aliceInitData.identity_key_curve25519,
+    has_ephemeral_key: !!aliceInitData.ephemeral_key,
+    has_ratchet_key: !!aliceInitData.ratchet_key,
+    used_one_time_pre_key_id: aliceInitData.used_one_time_pre_key_id,
+    identity_key_preview: aliceInitData.identity_key?.substring(0, 20),
+    ephemeral_key_preview: aliceInitData.ephemeral_key?.substring(0, 20),
+    ratchet_key_preview: aliceInitData.ratchet_key?.substring(0, 20),
+  });
 
   // 1. 获取本地密钥
   const identityPrivateKey = await getIdentityPrivateKey(masterKey);
@@ -132,6 +148,7 @@ export async function acceptSession(masterKey, contactId, aliceInitData) {
     );
     if (!oneTimePreKeyPrivate) {
       console.warn('⚠️ Bob 无法获取一次性预密钥，key_id:', aliceInitData.used_one_time_pre_key_id);
+      throw new Error(`无法获取一次性预密钥 key_id: ${aliceInitData.used_one_time_pre_key_id}，可能已被使用或不存在`);
     } else {
       console.log('✅ Bob 成功获取一次性预密钥');
     }
@@ -177,9 +194,11 @@ export async function acceptSession(masterKey, contactId, aliceInitData) {
   
   // 验证：记录密钥信息以便与 Alice 的日志对比
   console.log('🔍 Bob 密钥验证提示:', {
-    bob_receivingChainKey_preview: arrayBufferToBase64(initialKeys.receivingChainKey).substring(0, 20),
-    bob_sendingChainKey_preview: arrayBufferToBase64(initialKeys.sendingChainKey).substring(0, 20),
+    bob_receivingChainKey_preview: initialKeys.receivingChainKey ? arrayBufferToBase64(initialKeys.receivingChainKey).substring(0, 20) : null,
+    bob_sendingChainKey_preview: initialKeys.sendingChainKey ? arrayBufferToBase64(initialKeys.sendingChainKey).substring(0, 20) : null,
+    bob_sharedSecret_preview: arrayBufferToBase64(sharedSecret).substring(0, 20),
     note: 'Alice 的 sendingChainKey 应该等于 Bob 的 receivingChainKey',
+    note2: '如果链密钥不匹配，说明 sharedSecret 不一致，需要检查 X3DH 协商过程',
   });
 
   // 5. 生成初始 DH 棘轮密钥对
@@ -235,11 +254,25 @@ export async function acceptSession(masterKey, contactId, aliceInitData) {
  * @returns {Promise<Object>} 加密消息数据
  */
 export async function encryptAndSendMessage(contactId, plaintext) {
+  console.log(`🔐 [sessionManager] 开始加密消息，contactId: ${contactId}`);
+  
   // 1. 读取会话状态
   const session = await get(STORES.SESSIONS, contactId);
   if (!session) {
+    console.error(`❌ [sessionManager] 会话不存在: ${contactId}`);
     throw new Error('会话不存在，请先建立会话');
   }
+  
+  console.log(`🔐 [sessionManager] 读取到会话状态:`, {
+    contactId: contactId,
+    has_root_key: !!session.root_key,
+    has_sending_chain_key: !!session.sending_chain_key,
+    has_receiving_chain_key: !!session.receiving_chain_key,
+    send_counter: session.send_counter,
+    receive_counter: session.receive_counter,
+    has_sending_ratchet_key: !!session.sending_ratchet_key_private,
+    has_receiving_ratchet_key: !!session.receiving_ratchet_key_public,
+  });
 
   // 确保 Uint8Array 字段是正确的类型（IndexedDB 可能将其序列化为普通对象）
   if (session.root_key && !(session.root_key instanceof Uint8Array)) {
@@ -433,6 +466,15 @@ export async function receiveAndDecryptMessage(contactId, encryptedMessage) {
     if (!session.receiving_chain_key) {
       throw new Error('接收链密钥不存在：PreKeyMessage 需要初始接收链密钥');
     }
+    
+    // 添加调试日志：输出链密钥信息以便对比
+    console.log('🔍 PreKeyMessage 链密钥调试:', {
+      receiving_chain_key_preview: arrayBufferToBase64(session.receiving_chain_key).substring(0, 20),
+      receiving_chain_key_length: session.receiving_chain_key.length,
+      root_key_preview: arrayBufferToBase64(session.root_key).substring(0, 20),
+      note: '这个 receiving_chain_key 应该等于 Alice 的 sending_chain_key',
+    });
+    
     // 如果 receiving_ratchet_key_public 还没有设置，则设置它（但不执行 DH 棘轮更新）
     if (!hasReceivingRatchetKey) {
       session.receiving_ratchet_key_public = remoteRatchetKey;
@@ -441,6 +483,8 @@ export async function receiveAndDecryptMessage(contactId, encryptedMessage) {
       // 如果已经存在，验证它是否匹配
       if (!arraysEqual(session.receiving_ratchet_key_public, remoteRatchetKey)) {
         console.warn('⚠️ PreKeyMessage 的 ratchet_key 与已存储的不匹配，但使用初始链密钥解密');
+        console.warn('⚠️ 已存储的 ratchet_key:', arrayBufferToBase64(session.receiving_ratchet_key_public).substring(0, 20));
+        console.warn('⚠️ 消息中的 ratchet_key:', arrayBufferToBase64(remoteRatchetKey).substring(0, 20));
         // 更新为新的 ratchet_key，但不执行 DH 棘轮更新
         session.receiving_ratchet_key_public = remoteRatchetKey;
       }
@@ -627,6 +671,52 @@ export async function hasSession(contactId) {
 export async function deleteSession(contactId) {
   await remove(STORES.SESSIONS, contactId);
   console.log('会话已删除，contactId:', contactId);
+}
+
+/**
+ * 只更新 ratchet_key（不重建会话）
+ * 仅当会话存在但 ratchet_key 缺失，且其他状态完整时使用
+ * @param {string} contactId - 联系人ID
+ * @param {string} ratchetKey - Base64 编码的 ratchet_key
+ * @returns {Promise<void>}
+ */
+export async function updateRatchetKeyOnly(contactId, ratchetKey) {
+  const session = await get(STORES.SESSIONS, contactId);
+  if (!session) {
+    throw new Error('会话不存在，无法只更新 ratchet_key');
+  }
+  
+  // 检查是否可以只更新 ratchet_key
+  // 需要满足：root_key 和 receiving_chain_key 存在，且 receive_counter === 0
+  const canUpdateOnly = 
+    session.root_key && 
+    session.receiving_chain_key && 
+    session.receive_counter === 0 &&
+    !session.receiving_ratchet_key_public; // 只有缺失时才更新
+  
+  if (!canUpdateOnly) {
+    throw new Error('会话状态不完整，无法只更新 ratchet_key，需要重建会话');
+  }
+  
+  // 确保 Uint8Array 字段是正确的类型
+  if (session.root_key && !(session.root_key instanceof Uint8Array)) {
+    session.root_key = new Uint8Array(session.root_key);
+  }
+  if (session.receiving_chain_key && !(session.receiving_chain_key instanceof Uint8Array)) {
+    session.receiving_chain_key = new Uint8Array(session.receiving_chain_key);
+  }
+  
+  // 只更新 ratchet_key
+  session.receiving_ratchet_key_public = base64ToArrayBuffer(ratchetKey);
+  session.updated_at = Date.now();
+  
+  await put(STORES.SESSIONS, session);
+  console.log('✅ 已更新 ratchet_key（未重建会话）:', {
+    contactId,
+    ratchet_key_preview: ratchetKey.substring(0, 20),
+    root_key_exists: !!session.root_key,
+    receiving_chain_key_exists: !!session.receiving_chain_key,
+  });
 }
 
 /**

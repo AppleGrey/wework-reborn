@@ -3,7 +3,8 @@
  * 用于在获取消息列表后批量解密
  */
 
-import { acceptSession, receiveAndDecryptMessage, hasSession } from '@/crypto';
+import { acceptSession, receiveAndDecryptMessage, hasSession, deleteSession, updateRatchetKeyOnly, get } from '@/crypto';
+import { STORES } from '@/crypto';
 import store from '../store';
 
 /**
@@ -175,35 +176,100 @@ export async function decryptMessage(message) {
     // 检查会话是否存在
     let sessionExists = await hasSession(contactId);
 
-    // 如果是 PreKeyMessage 且会话不存在，需要先接受会话
-    if (message.message_type === 'PreKeyMessage' && !sessionExists) {
-      console.log('🔒 接收 PreKeyMessage，建立会话...');
-      console.log('PreKeyMessage 数据:', {
-        sender_identity_key: message.sender_identity_key,
-        sender_ephemeral_key: message.sender_ephemeral_key,
-        ratchet_key: message.ratchet_key,
-        used_one_time_pre_key_id: message.used_one_time_pre_key_id,
-      });
-      
+    // 如果是 PreKeyMessage，需要先接受会话（如果不存在或不匹配）
+    if (message.message_type === 'PreKeyMessage') {
       // 检查必需字段
       if (!message.sender_identity_key || !message.sender_ephemeral_key || !message.ratchet_key) {
         throw new Error('PreKeyMessage 缺少必需字段');
       }
       
-      await acceptSession(store.state.masterKey, contactId, {
-        identity_key: message.sender_identity_key,
-        identity_key_curve25519: message.sender_identity_key_curve25519,
-        ephemeral_key: message.sender_ephemeral_key,
-        ratchet_key: message.ratchet_key,
-        used_one_time_pre_key_id: message.used_one_time_pre_key_id,
-      });
-      
-      // 再次检查会话是否存在（确保保存成功）
-      sessionExists = await hasSession(contactId);
-      if (!sessionExists) {
-        throw new Error('会话建立失败：会话未保存');
+      // 如果会话已存在，检查 ratchet_key 是否匹配或缺失
+      if (sessionExists) {
+        const { get } = await import('@/crypto');
+        const { STORES } = await import('@/crypto');
+        const { base64ToArrayBuffer } = await import('@/crypto/keyGeneration');
+        const existingSession = await get(STORES.SESSIONS, contactId);
+        
+        if (existingSession && existingSession.receiving_ratchet_key_public) {
+          // ratchet_key 已存在，检查是否匹配
+          const existingRatchetKey = base64ToArrayBuffer(
+            typeof existingSession.receiving_ratchet_key_public === 'string'
+              ? existingSession.receiving_ratchet_key_public
+              : btoa(String.fromCharCode.apply(null, existingSession.receiving_ratchet_key_public))
+          );
+          const messageRatchetKey = base64ToArrayBuffer(message.ratchet_key);
+          
+          // 比较两个 ratchet_key 是否相等
+          const arraysEqual = (a, b) => {
+            if (a.length !== b.length) return false;
+            for (let i = 0; i < a.length; i++) {
+              if (a[i] !== b[i]) return false;
+            }
+            return true;
+          };
+          
+          if (!arraysEqual(existingRatchetKey, messageRatchetKey)) {
+            // ratchet_key 不匹配，必须重建会话
+            console.warn(`⚠️ 检测到 PreKeyMessage 的 ratchet_key 与已存储的不匹配，删除旧会话并重新建立`);
+            await deleteSession(contactId);
+            sessionExists = false;
+          }
+          // 如果匹配，继续使用现有会话
+        } else if (existingSession && 
+                   existingSession.root_key && 
+                   existingSession.receiving_chain_key && 
+                   existingSession.receive_counter === 0) {
+          // ratchet_key 缺失，但其他状态完整，尝试只更新 ratchet_key
+          console.log(`🔧 检测到会话存在但 ratchet_key 缺失，尝试只更新 ratchet_key（不重建会话）`);
+          try {
+            await updateRatchetKeyOnly(contactId, message.ratchet_key);
+            // 更新成功，继续使用现有会话
+          } catch (error) {
+            console.warn(`⚠️ 只更新 ratchet_key 失败，重建会话:`, error.message);
+            await deleteSession(contactId);
+            sessionExists = false;
+          }
+        } else {
+          // 会话状态不完整，必须重建
+          console.warn(`⚠️ 检测到会话状态不完整，删除并重新建立`);
+          if (existingSession) {
+            console.warn(`   会话状态检查:`, {
+              has_root_key: !!existingSession.root_key,
+              has_receiving_chain_key: !!existingSession.receiving_chain_key,
+              receive_counter: existingSession.receive_counter,
+              has_receiving_ratchet_key_public: !!existingSession.receiving_ratchet_key_public,
+            });
+          }
+          await deleteSession(contactId);
+          sessionExists = false;
+        }
       }
-      console.log('✅ 会话已建立并验证');
+      
+      // 如果会话不存在，建立新会话
+      if (!sessionExists) {
+        console.log('🔒 接收 PreKeyMessage，建立会话...');
+        console.log('PreKeyMessage 数据:', {
+          sender_identity_key: message.sender_identity_key,
+          sender_ephemeral_key: message.sender_ephemeral_key,
+          ratchet_key: message.ratchet_key,
+          used_one_time_pre_key_id: message.used_one_time_pre_key_id,
+        });
+        
+        await acceptSession(store.state.masterKey, contactId, {
+          identity_key: message.sender_identity_key,
+          identity_key_curve25519: message.sender_identity_key_curve25519,
+          ephemeral_key: message.sender_ephemeral_key,
+          ratchet_key: message.ratchet_key,
+          used_one_time_pre_key_id: message.used_one_time_pre_key_id,
+        });
+        
+        // 再次检查会话是否存在（确保保存成功）
+        sessionExists = await hasSession(contactId);
+        if (!sessionExists) {
+          throw new Error('会话建立失败：会话未保存');
+        }
+        console.log('✅ 会话已建立并验证');
+      }
     }
 
     // 解密消息
@@ -307,16 +373,87 @@ export async function decryptMessageList(messages) {
         ? message.receive_id
         : message.send_id;
 
+    // 🔥 关键修复：如果 PreKeyMessage 是自己发送的，跳过会话建立
+    // 因为发送方已经在发送时建立了会话，不应该再次接受自己的 PreKeyMessage
+    const isSentByMe = message.send_id === store.state.userInfo.uuid;
+    if (isSentByMe) {
+      console.log(`🔒 [messageDecryptor] 跳过自己发送的 PreKeyMessage (contactId: ${contactId})`);
+      continue;
+    }
+
     // 如果已经为这个联系人建立过会话，跳过
     if (contactSessions.has(contactId)) {
+      continue;
+    }
+
+    // 检查必需字段
+    if (!message.sender_identity_key || !message.sender_ephemeral_key || !message.ratchet_key) {
+      console.error('PreKeyMessage 缺少必需字段，跳过建立会话');
       continue;
     }
 
     // 检查会话是否已存在
     const sessionExists = await hasSession(contactId);
     if (sessionExists) {
-      contactSessions.add(contactId);
-      continue;
+      const existingSession = await get(STORES.SESSIONS, contactId);
+      
+      if (existingSession && existingSession.receiving_ratchet_key_public) {
+        // ratchet_key 已存在，检查是否匹配
+        const { base64ToArrayBuffer } = await import('@/crypto/keyGeneration');
+        const existingRatchetKey = base64ToArrayBuffer(
+          typeof existingSession.receiving_ratchet_key_public === 'string'
+            ? existingSession.receiving_ratchet_key_public
+            : btoa(String.fromCharCode.apply(null, existingSession.receiving_ratchet_key_public))
+        );
+        const messageRatchetKey = base64ToArrayBuffer(message.ratchet_key);
+        
+        // 比较两个 ratchet_key 是否相等
+        const arraysEqual = (a, b) => {
+          if (a.length !== b.length) return false;
+          for (let i = 0; i < a.length; i++) {
+            if (a[i] !== b[i]) return false;
+          }
+          return true;
+        };
+        
+        if (!arraysEqual(existingRatchetKey, messageRatchetKey)) {
+          // ratchet_key 不匹配，说明这是新的会话建立请求，必须删除旧会话
+          console.warn(`⚠️ 检测到 PreKeyMessage 的 ratchet_key 与已存储的不匹配，删除旧会话并重新建立`);
+          console.warn(`   已存储的 ratchet_key: ${btoa(String.fromCharCode.apply(null, existingRatchetKey)).substring(0, 20)}`);
+          console.warn(`   消息中的 ratchet_key: ${message.ratchet_key.substring(0, 20)}`);
+          await deleteSession(contactId);
+        } else {
+          // ratchet_key 匹配，使用现有会话
+          contactSessions.add(contactId);
+          continue;
+        }
+      } else if (existingSession && 
+                 existingSession.root_key && 
+                 existingSession.receiving_chain_key && 
+                 existingSession.receive_counter === 0) {
+        // ratchet_key 缺失，但其他状态完整，尝试只更新 ratchet_key
+        console.log(`🔧 检测到会话存在但 ratchet_key 缺失，尝试只更新 ratchet_key（不重建会话）`);
+        try {
+          await updateRatchetKeyOnly(contactId, message.ratchet_key);
+          contactSessions.add(contactId);
+          continue;
+        } catch (error) {
+          console.warn(`⚠️ 只更新 ratchet_key 失败，重建会话:`, error.message);
+          await deleteSession(contactId);
+        }
+      } else {
+        // 会话状态不完整，必须重建
+        console.warn(`⚠️ 检测到会话状态不完整，删除并重新建立`);
+        if (existingSession) {
+          console.warn(`   会话状态检查:`, {
+            has_root_key: !!existingSession.root_key,
+            has_receiving_chain_key: !!existingSession.receiving_chain_key,
+            receive_counter: existingSession.receive_counter,
+            has_receiving_ratchet_key_public: !!existingSession.receiving_ratchet_key_public,
+          });
+        }
+        await deleteSession(contactId);
+      }
     }
 
     // 建立会话
@@ -327,12 +464,6 @@ export async function decryptMessageList(messages) {
       ratchet_key: message.ratchet_key,
       used_one_time_pre_key_id: message.used_one_time_pre_key_id,
     });
-
-    // 检查必需字段
-    if (!message.sender_identity_key || !message.sender_ephemeral_key || !message.ratchet_key) {
-      console.error('PreKeyMessage 缺少必需字段，跳过建立会话');
-      continue;
-    }
 
     try {
       await acceptSession(store.state.masterKey, contactId, {

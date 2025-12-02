@@ -26,9 +26,13 @@
                     v-for="session in allSessionList"
                     :key="session.id"
                     @click="handleToSession(session)"
+                    style="position: relative;"
                   >
                     <img :src="session.avatar" class="sessionlist-avatar" />
                     {{ session.name }}
+                    <span v-if="session.unread_count > 0" class="session-unread-badge">
+                      {{ session.unread_count > 99 ? '99+' : session.unread_count }}
+                    </span>
                   </el-menu-item>
                 </el-menu>
               </div>
@@ -212,11 +216,12 @@
 </template>
 
 <script>
-import { reactive, toRefs, onMounted, ref } from "vue";
+import { reactive, toRefs, onMounted, onUnmounted, ref } from "vue";
 import { onBeforeRouteUpdate, useRouter } from "vue-router";
 import { ElMessageBox, ElMessage } from "element-plus";
 import { useStore } from "vuex";
 import axios from "@/utils/axios";
+import eventBus from "@/utils/eventBus";
 import Modal from "@/components/Modal.vue";
 import NavigationModal from "@/components/NavigationModal.vue";
 export default {
@@ -246,8 +251,24 @@ export default {
       },
       allSessionList: [],
     });
+    // 处理新消息接收事件（刷新会话列表）
+    const handleNewMessageReceived = async (message) => {
+      console.log("📬 [SessionList] 收到新消息通知，刷新会话列表");
+      await loadAllSessions();
+    };
+    
     onMounted(async () => {
       await loadAllSessions();
+      
+      // 监听新消息事件
+      eventBus.on('chat:new_message_received', handleNewMessageReceived);
+      console.log("✅ [SessionList] 已订阅新消息事件");
+    });
+    
+    onUnmounted(() => {
+      // 取消订阅
+      eventBus.off('chat:new_message_received', handleNewMessageReceived);
+      console.log("✅ [SessionList] 已取消订阅新消息事件");
     });
     const handleToSession = (session) => {
       router.push("/chat/" + session.id);
@@ -270,6 +291,7 @@ export default {
         ]);
 
         const allSessions = [];
+        const sessionUnreadMap = {}; // 用于存储每个会话的未读数
 
         // 处理用户会话
         if (userSessionListRsp.data.data) {
@@ -278,12 +300,21 @@ export default {
             if (!user.avatar.startsWith("http")) {
               user.avatar = store.state.backendUrl + user.avatar;
             }
+            
+            const unreadCount = user.unread_count || 0;
             allSessions.push({
               id: user.user_id,
+              session_id: user.session_id,
               name: user.user_name,
               avatar: user.avatar,
-              type: 'user'
+              type: 'user',
+              unread_count: unreadCount
             });
+            
+            // 存储到未读数映射
+            if (user.session_id) {
+              sessionUnreadMap[user.session_id] = unreadCount;
+            }
           }
         }
 
@@ -294,17 +325,30 @@ export default {
             if (!group.avatar.startsWith("http")) {
               group.avatar = store.state.backendUrl + group.avatar;
             }
+            
+            const unreadCount = group.unread_count || 0;
             allSessions.push({
               id: group.group_id,
+              session_id: group.session_id,
               name: group.group_name,
               avatar: group.avatar,
-              type: 'group'
+              type: 'group',
+              unread_count: unreadCount
             });
+            
+            // 存储到未读数映射
+            if (group.session_id) {
+              sessionUnreadMap[group.session_id] = unreadCount;
+            }
           }
         }
 
         // 按创建时间排序（如果有时间字段，这里先简单按数组顺序）
         data.allSessionList = allSessions;
+        
+        // 将未读数存储到 Vuex
+        store.commit('setSessionUnreadCounts', sessionUnreadMap);
+        console.log("✅ [SessionList] 加载会话列表成功，未读数已更新到 Vuex");
       } catch (error) {
         console.error(error);
       }
@@ -460,5 +504,26 @@ h3 {
   width: 30px;
   height: 30px;
   margin-right: 20px;
+}
+
+.session-unread-badge {
+  position: absolute;
+  right: 15px;
+  top: 50%;
+  transform: translateY(-50%);
+  background-color: #f56c6c;
+  color: #ffffff;
+  border-radius: 12px;
+  padding: 1px 5px;
+  font-size: 11px;
+  font-weight: bold;
+  min-width: 16px;
+  height: 16px;
+  line-height: 14px;
+  text-align: center;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
 }
 </style>

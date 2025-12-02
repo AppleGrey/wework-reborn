@@ -59,6 +59,7 @@ import { useRouter } from "vue-router";
 import { ElMessage } from "element-plus";
 import { useStore } from "vuex";
 import { loginAndDeriveMasterKey } from "@/crypto";
+import { setCurrentUserId } from "@/crypto/cryptoStore";
 
 export default {
   name: "Login",
@@ -86,6 +87,17 @@ export default {
             return;
           }
           try {
+            if (!response.data.data.avatar.startsWith("http")) {
+              response.data.data.avatar =
+                store.state.backendUrl + response.data.data.avatar;
+            }
+            store.commit("setUserInfo", response.data.data);
+            
+            // 🔥 关键：必须先设置当前用户 ID，确保 IndexedDB 数据隔离
+            // 这样 loginAndDeriveMasterKey 才能读取到正确的 salt
+            setCurrentUserId(response.data.data.uuid);
+            console.log(`🔐 [Login.vue] 已设置当前用户 ID: ${response.data.data.uuid}`);
+            
             // 尝试重新派生主密钥（如果用户启用了加密）
             try {
               const masterKey = await loginAndDeriveMasterKey(data.loginData.password);
@@ -110,28 +122,23 @@ export default {
               console.log("未找到加密密钥，使用普通模式:", error.message);
               ElMessage.success(response.data.message);
             }
-
-            if (!response.data.data.avatar.startsWith("http")) {
-              response.data.data.avatar =
-                store.state.backendUrl + response.data.data.avatar;
-            }
-            store.commit("setUserInfo", response.data.data);
+            
             // 准备创建websocket连接
             const wsUrl =
               store.state.wsUrl + "/wss?client_id=" + response.data.data.uuid + "&token=" + encodeURIComponent(response.data.data.token);
             console.log(wsUrl);
             store.state.socket = new WebSocket(wsUrl);
             store.state.socket.onopen = () => {
-              console.log("WebSocket连接已打开");
+              console.log("🌐 [Login.vue] WebSocket连接已打开");
+              console.log("🌐 [Login.vue] 连接建立后，App.vue 将自动设置全局消息处理器");
             };
-            store.state.socket.onmessage = (message) => {
-              console.log("收到消息：", message.data);
-            };
+            // 不在这里设置 onmessage，让 App.vue 统一管理
+            // App.vue 中的 watch 会监听到 socket 的变化并设置全局处理器
             store.state.socket.onclose = () => {
-              console.log("WebSocket连接已关闭");
+              console.log("🌐 [Login.vue] WebSocket连接已关闭");
             };
             store.state.socket.onerror = (error) => {
-              console.log("WebSocket连接发生错误", error);
+              console.log("🌐 [Login.vue] WebSocket连接发生错误", error);
             };
             router.push("/chat/sessionlist");
           } catch (error) {
