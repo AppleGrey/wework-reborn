@@ -59,6 +59,9 @@ const router = createRouter({
 });
 
 router.beforeEach((to, from, next) => {
+  // 检查是否支持 Web Crypto API（需要 HTTPS 或 localhost）
+  const isCryptoSupported = window.crypto && window.crypto.subtle;
+  
   // 如果用户未登录，检查是否是登录/注册页面
   if (!store.state.userInfo.uuid) {
     if (to.path === '/login' || to.path === '/register' || to.path === '/smsLogin') {
@@ -67,7 +70,15 @@ router.beforeEach((to, from, next) => {
     }
     next('/login')
   } else {
-    // 用户已登录，检查主密钥状态
+    // 用户已登录
+    // 如果不支持 Web Crypto API（HTTP 环境），跳过主密钥检查
+    if (!isCryptoSupported) {
+      console.log('⚠️ 当前环境不支持 Web Crypto API（需要 HTTPS），跳过加密功能');
+      next();
+      return;
+    }
+    
+    // 检查主密钥状态
     // 如果 sessionStorage 中没有主密钥，且 Vuex 中也没有主密钥
     // 说明用户关闭了"保存主密钥"开关，页面刷新后应该跳转到登录页面
     const hasMasterKeyInStorage = sessionStorage.getItem('masterKey');

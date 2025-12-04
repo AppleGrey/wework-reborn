@@ -43,3 +43,5 @@ logs/
 logs/*
 
 docs/*
+
+docker-compose.prod.yml
