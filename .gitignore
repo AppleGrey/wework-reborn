@@ -45,3 +45,4 @@ logs/*
 docs/*
 
 docker-compose.prod.yml
+migrations/*
