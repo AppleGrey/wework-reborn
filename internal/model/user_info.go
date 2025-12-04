@@ -34,6 +34,7 @@ type UserInfo struct {
 	SignedPreKeySignature       string       `gorm:"column:signed_pre_key_signature;type:text;comment:签名预公钥的签名"`
 	SignedPreKeyTimestamp       sql.NullTime `gorm:"column:signed_pre_key_timestamp;type:timestamp;comment:签名预密钥生成时间"`
 	KeyGeneration               int          `gorm:"column:key_generation;default:1;comment:密钥代数"`
+	IsActivated                 int8         `gorm:"column:is_activated;default:0;not null;comment:是否已激活，0.未激活，1.已激活"`
 }
 
 func (UserInfo) TableName() string {

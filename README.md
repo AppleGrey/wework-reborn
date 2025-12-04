@@ -190,7 +190,6 @@ docker-compose down -v
 ### 认证相关
 - `POST /login` - 用户登录
 - `POST /register` - 用户注册
-- `POST /registerWithCrypto` - 带加密密钥的注册
 
 ### 用户相关
 - `POST /user/getUserInfo` - 获取用户信息

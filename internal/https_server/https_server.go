@@ -32,7 +32,6 @@ func init() {
 	// 无需认证的路由
 	GE.POST("/login", v1.Login)
 	GE.POST("/register", v1.Register)
-	GE.POST("/registerWithCrypto", v1.RegisterWithCrypto) // 带加密密钥的注册
 
 	// 需要认证的路由组
 	auth := GE.Group("/")

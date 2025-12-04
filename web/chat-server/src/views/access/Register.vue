@@ -161,13 +161,24 @@ export default {
         // 第三步：生成加密密钥（此时已设置用户 ID，密钥会保存到正确的用户专属数据库）
         ElMessage.info("正在生成加密密钥，请稍候...");
         let cryptoKeys;
-        try {
-          cryptoKeys = await initializeUserKeys(data.registerData.password);
-          console.log("✅ 加密密钥生成成功");
-        } catch (error) {
-          console.error("❌ 生成加密密钥失败:", error);
-          ElMessage.error("生成加密密钥失败: " + error.message);
-          return;
+        const maxRetries = 3;
+        for (let attempt = 1; attempt <= maxRetries; attempt++) {
+          try {
+            cryptoKeys = await initializeUserKeys(data.registerData.password);
+            console.log("✅ 加密密钥生成成功");
+            break;
+          } catch (error) {
+            console.error(`❌ 生成加密密钥失败 (尝试 ${attempt}/${maxRetries}):`, error);
+            if (attempt === maxRetries) {
+              ElMessage.error("生成加密密钥失败，请稍后重试注册");
+              // 清理已创建的用户状态
+              store.commit("cleanUserInfo");
+              return;
+            }
+            // 等待一秒后重试
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            ElMessage.warning(`密钥生成失败，正在重试 (${attempt}/${maxRetries})...`);
+          }
         }
 
         // 第四步：上传公钥束到服务器（不传递 user_id，后端从 token 中获取，更安全）
@@ -175,15 +186,20 @@ export default {
           const uploadResponse = await axios.post("/crypto/uploadPublicKeyBundle", cryptoKeys);
           if (uploadResponse.data.code === 200) {
             console.log("✅ 公钥束上传成功");
-            ElMessage.success("注册成功！(端到端加密已启用)");
           } else {
-            console.warn("⚠️ 上传公钥束失败:", uploadResponse.data.message);
-            ElMessage.warning("公钥上传失败，但账号已创建成功");
+            console.error("❌ 上传公钥束失败:", uploadResponse.data.message);
+            ElMessage.error("上传加密公钥失败，请稍后重试注册");
+            store.commit("cleanUserInfo");
+            return;
           }
         } catch (error) {
           console.error("❌ 上传公钥束出错:", error);
-          ElMessage.warning("公钥上传失败，但账号已创建成功");
+          ElMessage.error("上传加密公钥失败，请检查网络后重试");
+          store.commit("cleanUserInfo");
+          return;
         }
+
+        ElMessage.success("注册成功！(端到端加密已启用)");
 
         // 第五步：派生主密钥并保存到内存
         const masterKey = await loginAndDeriveMasterKey(data.registerData.password);
