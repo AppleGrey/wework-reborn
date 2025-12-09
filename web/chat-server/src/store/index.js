@@ -34,9 +34,9 @@ try {
 
 export default createStore({
   state: {
-    // 生产环境地址
-    backendUrl: 'https://wework.applegrey.xyz',
-    wsUrl: 'wss://wework.applegrey.xyz',
+    // 测试环境地址
+    backendUrl: 'http://localhost:8888',
+    wsUrl: 'ws://localhost:8888',
     // 信令服务器地址
     // signalUrl: 'wss://127.0.0.1:8001',
     userInfo: (sessionStorage.getItem('userInfo') && JSON.parse(sessionStorage.getItem('userInfo'))) || {},
