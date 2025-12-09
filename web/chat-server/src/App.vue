@@ -106,6 +106,8 @@ export default {
           } else {
             console.warn("🔔 [App.vue] 未读数量无效:", message.unread_count);
           }
+          // 通知 ContactList.vue 刷新通知列表（如果用户正在查看通知界面）
+          eventBus.emit('notification:new_notification', message);
           return; // 通知消息处理完毕，不再传递给其他组件
         }
         
