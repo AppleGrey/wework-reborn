@@ -223,6 +223,48 @@ const triggerFileUpload = () => {
   fileInput.value?.click();
 };
 
+// 处理粘贴的图片（供外部调用）
+const handlePastedImage = (file) => {
+  if (!file) return false;
+
+  // 检查文件类型
+  if (!file.type.startsWith('image/')) {
+    return false;
+  }
+
+  // 检查文件大小
+  if (file.size > props.maxImageSize) {
+    ElMessage.error(`图片大小不能超过 ${formatSize(props.maxImageSize)}`);
+    return false;
+  }
+
+  currentFile.value = file;
+  previewImageUrl.value = URL.createObjectURL(file);
+  showImagePreview.value = true;
+  return true;
+};
+
+// 处理粘贴的文件（供外部调用）
+const handlePastedFile = (file) => {
+  if (!file) return false;
+
+  // 检查文件大小
+  if (file.size > props.maxFileSize) {
+    ElMessage.error(`文件大小不能超过 ${formatSize(props.maxFileSize)}`);
+    return false;
+  }
+
+  currentFile.value = file;
+  showFileConfirm.value = true;
+  return true;
+};
+
+// 暴露方法给父组件
+defineExpose({
+  handlePastedImage,
+  handlePastedFile
+});
+
 // 处理图片选择
 const handleImageSelect = (event) => {
   const file = event.target.files?.[0];

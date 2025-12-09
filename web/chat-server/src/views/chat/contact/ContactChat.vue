@@ -793,6 +793,7 @@
             <div class="tool-bar">
               <div class="tool-bar-left">
                 <FileUpload 
+                  ref="fileUploadRef"
                   v-if="contactInfo.contact_id && contactInfo.contact_id.startsWith('U')"
                   @upload-complete="handleFileUploadComplete"
                   @upload-error="handleFileUploadError"
@@ -924,6 +925,10 @@ export default {
   setup() {
     const router = useRouter();
     const store = useStore();
+    
+    // FileUpload 组件引用（用于粘贴图片）
+    const fileUploadRef = ref(null);
+    
     const data = reactive({
       chatMessage: "",
       chatName: "",
@@ -1169,6 +1174,10 @@ export default {
         eventBus.on('chat:av_message', handleAVMessage);
         console.log("📡 [ContactChat] ✅ 已订阅事件总线");
         
+        // 添加粘贴事件监听（支持截图粘贴发送）
+        document.addEventListener('paste', handlePaste);
+        console.log("📋 [ContactChat] ✅ 已添加粘贴事件监听");
+        
         scrollToBottom();
       } catch (error) {
         console.error(error);
@@ -1180,6 +1189,10 @@ export default {
       console.log("📡 [ContactChat] 取消订阅事件总线");
       eventBus.off('chat:message', handleChatMessage);
       eventBus.off('chat:av_message', handleAVMessage);
+      
+      // 移除粘贴事件监听
+      document.removeEventListener('paste', handlePaste);
+      console.log("📋 [ContactChat] ✅ 已移除粘贴事件监听");
     });
     const getChatContactInfo = async (id) => {
       try {
@@ -1471,6 +1484,53 @@ export default {
         sendMessage();
       }
       // Shift+Enter 保持默认行为（换行）
+    };
+
+    // 处理粘贴事件：支持截图/文件粘贴发送
+    const handlePaste = (event) => {
+      // 只处理单聊（联系人 ID 以 'U' 开头）
+      if (!data.contactInfo.contact_id || !data.contactInfo.contact_id.startsWith('U')) {
+        return;
+      }
+
+      const items = event.clipboardData?.items;
+      if (!items) return;
+
+      for (const item of items) {
+        // 优先处理图片
+        if (item.type.startsWith('image/')) {
+          event.preventDefault(); // 阻止默认粘贴行为
+          
+          const file = item.getAsFile();
+          if (file && fileUploadRef.value) {
+            console.log("📋 [ContactChat] 检测到粘贴图片:", file.name, file.type, file.size);
+            
+            // 调用 FileUpload 组件的方法处理图片
+            const handled = fileUploadRef.value.handlePastedImage(file);
+            if (handled) {
+              console.log("📋 [ContactChat] ✅ 图片已传递给 FileUpload 组件");
+            }
+          }
+          return; // 处理完图片后返回
+        }
+        
+        // 处理文件（非图片类型）
+        if (item.kind === 'file') {
+          event.preventDefault(); // 阻止默认粘贴行为
+          
+          const file = item.getAsFile();
+          if (file && fileUploadRef.value) {
+            console.log("📋 [ContactChat] 检测到粘贴文件:", file.name, file.type, file.size);
+            
+            // 调用 FileUpload 组件的方法处理文件
+            const handled = fileUploadRef.value.handlePastedFile(file);
+            if (handled) {
+              console.log("📋 [ContactChat] ✅ 文件已传递给 FileUpload 组件");
+            }
+          }
+          return; // 处理完文件后返回
+        }
+      }
     };
 
     const sendMessage = async () => {
@@ -2695,6 +2755,7 @@ export default {
     return {
       ...toRefs(data),
       router,
+      fileUploadRef,
       handleCreateGroup,
       showUserContactInfoModal,
       quitUserContactInfoModal,
