@@ -112,8 +112,11 @@ func (s *ossService) GenerateUploadCredential(userId string, fileType string) (*
 	// 构建 signing key 并生成签名
 	signature := s.generateSignatureV4(*cred.AccessKeySecret, date, cfg.Region, stringToSign)
 
-	// OSS 上传地址
-	host := fmt.Sprintf("https://%s.%s", cfg.Bucket, cfg.Endpoint)
+	// OSS 上传地址（去掉 endpoint 的协议前缀后拼接）
+	endpoint := cfg.Endpoint
+	endpoint = strings.TrimPrefix(endpoint, "https://")
+	endpoint = strings.TrimPrefix(endpoint, "http://")
+	host := fmt.Sprintf("https://%s.%s", cfg.Bucket, endpoint)
 
 	credential := &UploadCredential{
 		Policy:           stringToSign,
@@ -192,9 +195,14 @@ func (s *ossService) GenerateDownloadURL(ossKey string) (string, error) {
 		return "", fmt.Errorf("获取 STS 临时凭证失败: %v", err)
 	}
 
-	// 使用官方 SDK 创建 OSS 客户端
+	// 使用官方 SDK 创建 OSS 客户端（去掉协议前缀后加 https://）
+	endpoint := cfg.Endpoint
+	endpoint = strings.TrimPrefix(endpoint, "https://")
+	endpoint = strings.TrimPrefix(endpoint, "http://")
+	endpoint = "https://" + endpoint
+
 	client, err := alioss.New(
-		cfg.Endpoint,
+		endpoint,
 		*cred.AccessKeyId,
 		*cred.AccessKeySecret,
 		alioss.SecurityToken(*cred.SecurityToken),
