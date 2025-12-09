@@ -27,23 +27,6 @@ func Register(c *gin.Context) {
 	JsonBack(c, message, ret, userInfo)
 }
 
-// RegisterWithCrypto 注册（带加密密钥）
-func RegisterWithCrypto(c *gin.Context) {
-	var registerReq request.RegisterCryptoRequest
-	if err := c.BindJSON(&registerReq); err != nil {
-		zlog.Error("参数绑定失败: " + err.Error())
-		c.JSON(http.StatusOK, gin.H{
-			"code":    500,
-			"message": "参数错误: " + err.Error(),
-		})
-		return
-	}
-
-	zlog.Info(fmt.Sprintf("用户注册（加密）: %s", registerReq.Account))
-	message, userInfo, ret := gorm.UserInfoService.RegisterWithCrypto(registerReq)
-	JsonBack(c, message, ret, userInfo)
-}
-
 // Login 登录
 func Login(c *gin.Context) {
 	var loginReq request.LoginRequest
@@ -176,20 +159,5 @@ func SetAdmin(c *gin.Context) {
 		return
 	}
 	message, ret := gorm.UserInfoService.SetAdmin(req.UuidList, req.IsAdmin)
-	JsonBack(c, message, ret, nil)
-}
-
-// SendSmsCode 发送短信验证码
-func SendSmsCode(c *gin.Context) {
-	var req request.SendSmsCodeRequest
-	if err := c.BindJSON(&req); err != nil {
-		zlog.Error(err.Error())
-		c.JSON(http.StatusOK, gin.H{
-			"code":    500,
-			"message": constants.SYSTEM_ERROR,
-		})
-		return
-	}
-	message, ret := gorm.UserInfoService.SendSmsCode(req.Telephone)
 	JsonBack(c, message, ret, nil)
 }

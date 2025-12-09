@@ -9,7 +9,6 @@
       <el-container class="chat-window-container">
         <el-aside class="aside-container">
           <NavigationModal></NavigationModal>
-          <ContactListModal></ContactListModal>
         </el-aside>
         <div class="owner-info-window">
           <div class="my-homepage-title"><h2>我的主页</h2></div>
@@ -136,14 +135,12 @@ import { checkEmailValid } from "@/assets/js/valid.js";
 import { generateString } from "@/assets/js/random.js";
 import SmallModal from "@/components/SmallModal.vue";
 import NavigationModal from "@/components/NavigationModal.vue";
-import ContactListModal from "@/components/ContactListModal.vue";
 import { ElMessage } from "element-plus";
 export default {
   name: "OwnInfo",
   components: {
     Modal,
     SmallModal,
-    ContactListModal,
     NavigationModal,
   },
   setup() {

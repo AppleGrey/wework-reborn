@@ -115,12 +115,16 @@ export default {
                 
                 ElMessage.success(response.data.message + " (端到端加密已启用)");
               } else {
-                console.log("主密钥验证失败，可能未启用加密或密码错误");
-                ElMessage.success(response.data.message);
+                console.error("❌ 主密钥派生失败");
+                ElMessage.error("登录失败：无法验证加密密钥，请重新注册或联系管理员");
+                store.commit("cleanUserInfo");
+                return;
               }
             } catch (error) {
-              console.log("未找到加密密钥，使用普通模式:", error.message);
-              ElMessage.success(response.data.message);
+              console.error("❌ 加密密钥验证失败:", error.message);
+              ElMessage.error("登录失败：未找到加密密钥，请重新注册或联系管理员");
+              store.commit("cleanUserInfo");
+              return;
             }
             
             // 准备创建websocket连接

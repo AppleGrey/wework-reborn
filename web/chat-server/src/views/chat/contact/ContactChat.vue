@@ -584,6 +584,58 @@
                     </div>
                   </div>
 
+                  <!-- 左侧加密图片消息 (type == 4) -->
+                  <div
+                    v-if="
+                      messageItem.send_id != userInfo.uuid &&
+                      messageItem.type == 4
+                    "
+                    class="left-message"
+                  >
+                    <div class="left-message-left">
+                      <el-image
+                        :src="messageItem.send_avatar"
+                        style="width: 40px; height: 40px; margin-left: 10px; margin-right: 10px; margin-top: 10px;"
+                      />
+                    </div>
+                    <div class="left-message-right">
+                      <div class="left-message-right-top">
+                        <div class="left-message-contactname">{{ messageItem.send_name }}</div>
+                        <div class="left-message-time">{{ messageItem.created_at }}</div>
+                      </div>
+                      <FileMessage 
+                        :file-info="parseFileInfo(messageItem)" 
+                        :is-encrypted="true" 
+                      />
+                    </div>
+                  </div>
+
+                  <!-- 左侧加密文件消息 (type == 5) -->
+                  <div
+                    v-if="
+                      messageItem.send_id != userInfo.uuid &&
+                      messageItem.type == 5
+                    "
+                    class="left-message"
+                  >
+                    <div class="left-message-left">
+                      <el-image
+                        :src="messageItem.send_avatar"
+                        style="width: 40px; height: 40px; margin-left: 10px; margin-right: 10px; margin-top: 10px;"
+                      />
+                    </div>
+                    <div class="left-message-right">
+                      <div class="left-message-right-top">
+                        <div class="left-message-contactname">{{ messageItem.send_name }}</div>
+                        <div class="left-message-time">{{ messageItem.created_at }}</div>
+                      </div>
+                      <FileMessage 
+                        :file-info="parseFileInfo(messageItem)" 
+                        :is-encrypted="true" 
+                      />
+                    </div>
+                  </div>
+
                   <div
                     style="
                       width: 100%;
@@ -678,150 +730,73 @@
                         </div>
                       </div>
                     </div>
+
+                    <!-- 右侧加密图片消息 (type == 4) -->
+                    <div
+                      v-if="
+                        messageItem.send_id == userInfo.uuid &&
+                        messageItem.type == 4
+                      "
+                      class="right-message"
+                    >
+                      <div class="right-message-right">
+                        <el-image
+                          :src="userInfo.avatar"
+                          style="width: 40px; height: 40px; margin-left: 10px; margin-right: 10px; margin-top: 10px;"
+                        />
+                      </div>
+                      <div class="right-message-left">
+                        <div class="right-message-left-top">
+                          <div class="right-message-contactname">{{ userInfo.nickname }}</div>
+                          <div class="right-message-time">{{ messageItem.created_at }}</div>
+                        </div>
+                        <div style="display: flex; flex-direction: row-reverse">
+                          <FileMessage 
+                            :file-info="parseFileInfo(messageItem)" 
+                            :is-encrypted="true" 
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    <!-- 右侧加密文件消息 (type == 5) -->
+                    <div
+                      v-if="
+                        messageItem.send_id == userInfo.uuid &&
+                        messageItem.type == 5
+                      "
+                      class="right-message"
+                    >
+                      <div class="right-message-right">
+                        <el-image
+                          :src="userInfo.avatar"
+                          style="width: 40px; height: 40px; margin-left: 10px; margin-right: 10px; margin-top: 10px;"
+                        />
+                      </div>
+                      <div class="right-message-left">
+                        <div class="right-message-left-top">
+                          <div class="right-message-contactname">{{ userInfo.nickname }}</div>
+                          <div class="right-message-time">{{ messageItem.created_at }}</div>
+                        </div>
+                        <div style="display: flex; flex-direction: row-reverse">
+                          <FileMessage 
+                            :file-info="parseFileInfo(messageItem)" 
+                            :is-encrypted="true" 
+                          />
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
             </el-scrollbar>
             <div class="tool-bar">
               <div class="tool-bar-left">
-                <el-tooltip
-                  effect="customized"
-                  content="表情包"
-                  placement="top"
-                  hide-after="0"
-                  enterable="false"
-                >
-                  <button
-                    class="image-button"
-                    @click="
-                      downloadFile(backendUrl + '/static/avatars', '头像.jpg')
-                    "
-                  >
-                    <svg
-                      t="1733502796507"
-                      class="sticker-icon"
-                      viewBox="0 0 1024 1024"
-                      version="1.1"
-                      xmlns="http://www.w3.org/2000/svg"
-                      p-id="1555"
-                      width="128"
-                      height="128"
-                    >
-                      <path
-                        d="M504.32 31.872a472.256 472.256 0 1 1 0 944.512 472.256 472.256 0 0 1 0-944.512z m0 63.36a408.96 408.96 0 1 0 0 817.856 408.96 408.96 0 0 0 0-817.92z m228.864 487.808v0.192a217.856 217.856 0 1 1-435.712 0V583.04h435.712zM370.496 321.536a73.024 73.024 0 1 1 0 146.048 73.024 73.024 0 0 1 0-146.048z m289.664 0a73.024 73.024 0 1 1 0 146.048 73.024 73.024 0 0 1 0-146.048z"
-                        fill="#2c2c2c"
-                        p-id="1556"
-                      ></path>
-                    </svg>
-                  </button>
-                </el-tooltip>
-
-                <el-tooltip
-                  effect="customized"
-                  content="文件上传"
-                  placement="top"
-                  hide-after="0"
-                  enterable="false"
-                >
-                  <button class="image-button">
-                    <el-upload
-                      v-model:file-list="fileList"
-                      ref="uploadRef"
-                      :auto-upload="true"
-                      :show-file-list="false"
-                      :action="uploadPath"
-                      :on-success="handleUploadSuccess"
-                      :before-upload="beforeFileUpload"
-                      style="
-                        display: flex;
-                        align-items: center;
-                        justify-content: center;
-                      "
-                    >
-                      <svg
-                        t="1733503065264"
-                        class="upload-icon"
-                        viewBox="0 0 1024 1024"
-                        version="1.1"
-                        xmlns="http://www.w3.org/2000/svg"
-                        p-id="2430"
-                        width="128"
-                        height="128"
-                      >
-                        <path
-                          d="M543.7 157v534c0 16.6-13.4 30-30 30s-30-13.4-30-30V157c0-16.6 13.4-30 30-30 16.5 0 30 13.4 30 30z"
-                          fill=""
-                          p-id="2431"
-                        ></path>
-                        <path
-                          d="M323.1 331c11.8 11.8 30.7 11.8 42.5 0l119.9-119.9c15.6-15.6 40.9-15.6 56.6 0L662 331c11.7 11.7 30.7 11.7 42.4 0s11.7-30.7 0-42.4L541.7 126.1c-15.6-15.6-41-15.6-56.6 0L323 288.6c-11.6 11.8-11.6 30.7 0.1 42.4zM853.7 913h-680c-33.1 0-60-26.9-60-60V583.7c0-16.4 12.8-30.2 29.2-30.7 16.9-0.4 30.8 13.2 30.8 30v240c0 16.6 13.4 30 30 30h620c16.6 0 30-13.4 30-30V583.7c0-16.4 12.8-30.2 29.2-30.7 16.9-0.4 30.8 13.2 30.8 30v270c0 33.1-26.9 60-60 60z"
-                          fill=""
-                          p-id="2432"
-                        ></path>
-                      </svg>
-                    </el-upload>
-                  </button>
-                </el-tooltip>
-
-                <el-tooltip
-                  effect="customized"
-                  content="聊天记录"
-                  placement="top"
-                  hide-after="0"
-                  enterable="false"
-                >
-                  <button class="image-button">
-                    <svg
-                      t="1733504061769"
-                      class="record-icon"
-                      viewBox="0 0 1024 1024"
-                      version="1.1"
-                      xmlns="http://www.w3.org/2000/svg"
-                      p-id="5492"
-                      width="128"
-                      height="128"
-                    >
-                      <path
-                        d="M695.04 194.32H98.08c-18.32 0-33.16-14.85-33.16-33.16 0-18.32 14.85-33.16 33.16-33.16h596.96c18.32 0 33.16 14.85 33.16 33.16 0 18.31-14.84 33.16-33.16 33.16zM298.97 393.3H96.19c-17.27 0-31.27-14-31.27-31.27v-3.79c0-17.27 14-31.27 31.27-31.27h202.78c17.27 0 31.27 14 31.27 31.27v3.79c-0.01 17.28-14.01 31.27-31.27 31.27zM230.74 592.29H98.08c-18.32 0-33.16-14.85-33.16-33.16 0-18.32 14.85-33.16 33.16-33.16h132.66c18.32 0 33.16 14.85 33.16 33.16 0.01 18.31-14.84 33.16-33.16 33.16zM230.74 791.28H98.08c-18.32 0-33.16-14.85-33.16-33.16 0-18.32 14.85-33.16 33.16-33.16h132.66c18.32 0 33.16 14.85 33.16 33.16 0.01 18.31-14.84 33.16-33.16 33.16zM728.2 691.78H595.55c-18.32 0-33.16-14.85-33.16-33.16 0-18.32 14.85-33.16 33.16-33.16H728.2c18.32 0 33.16 14.85 33.16 33.16 0.01 18.31-14.84 33.16-33.16 33.16z"
-                        p-id="5493"
-                      ></path>
-                      <path
-                        d="M562.38 658.62V525.96c0-18.32 14.85-33.16 33.16-33.16 18.32 0 33.16 14.85 33.16 33.16v132.66c0 18.32-14.85 33.16-33.16 33.16-18.31 0-33.16-14.85-33.16-33.16z"
-                        p-id="5494"
-                      ></path>
-                      <path
-                        d="M960.35 625.45c0 183.16-148.48 331.64-331.64 331.64S297.07 808.62 297.07 625.45s148.48-331.64 331.64-331.64 331.64 148.48 331.64 331.64zM628.71 360.14c-146.53 0-265.31 118.79-265.31 265.31s118.79 265.31 265.31 265.31 265.31-118.79 265.31-265.31-118.78-265.31-265.31-265.31z"
-                        p-id="5495"
-                      ></path>
-                    </svg>
-                  </button>
-                </el-tooltip>
-                <el-tooltip
-                  effect="customized"
-                  content="全文复制"
-                  placement="top"
-                  hide-after="0"
-                  enterable="false"
-                >
-                  <button class="image-button">
-                    <svg
-                      t="1733503137487"
-                      class="copy-icon"
-                      viewBox="0 0 1024 1024"
-                      version="1.1"
-                      xmlns="http://www.w3.org/2000/svg"
-                      p-id="3442"
-                      width="128"
-                      height="128"
-                    >
-                      <path
-                        d="M394.666667 106.666667h448a74.666667 74.666667 0 0 1 74.666666 74.666666v448a74.666667 74.666667 0 0 1-74.666666 74.666667H394.666667a74.666667 74.666667 0 0 1-74.666667-74.666667V181.333333a74.666667 74.666667 0 0 1 74.666667-74.666666z m0 64a10.666667 10.666667 0 0 0-10.666667 10.666666v448a10.666667 10.666667 0 0 0 10.666667 10.666667h448a10.666667 10.666667 0 0 0 10.666666-10.666667V181.333333a10.666667 10.666667 0 0 0-10.666666-10.666666H394.666667z m245.333333 597.333333a32 32 0 0 1 64 0v74.666667a74.666667 74.666667 0 0 1-74.666667 74.666666H181.333333a74.666667 74.666667 0 0 1-74.666666-74.666666V394.666667a74.666667 74.666667 0 0 1 74.666666-74.666667h74.666667a32 32 0 0 1 0 64h-74.666667a10.666667 10.666667 0 0 0-10.666666 10.666667v448a10.666667 10.666667 0 0 0 10.666666 10.666666h448a10.666667 10.666667 0 0 0 10.666667-10.666666v-74.666667z"
-                        fill="#000000"
-                        p-id="3443"
-                      ></path>
-                    </svg>
-                  </button>
-                </el-tooltip>
+                <FileUpload 
+                  v-if="contactInfo.contact_id && contactInfo.contact_id.startsWith('U')"
+                  @upload-complete="handleFileUploadComplete"
+                  @upload-error="handleFileUploadError"
+                />
               </div>
               <div class="tool-bar-right">
                 <el-tooltip
@@ -902,7 +877,8 @@
                 show-word-limit
                 maxlength="500"
                 :autosize="{ minRows: 7.9, maxRows: 7 }"
-                placeholder="请输入内容"
+                placeholder="请输入内容（Enter发送，Shift+Enter换行）"
+                @keydown="handleInputKeydown"
               />
             </div>
             <div class="chat-send">
@@ -923,6 +899,8 @@ import axios from "@/utils/axios";
 import Modal from "@/components/Modal.vue";
 import SmallModal from "@/components/SmallModal.vue";
 import NavigationModal from "@/components/NavigationModal.vue";
+import FileUpload from "@/components/FileUpload.vue";
+import FileMessage from "@/components/FileMessage.vue";
 import { ElMessage, ElMessageBox, ElScrollbar } from "element-plus";
 import { ElNotification } from "element-plus";
 import {
@@ -939,6 +917,8 @@ export default {
     Modal,
     SmallModal,
     NavigationModal,
+    FileUpload,
+    FileMessage,
   },
 
   setup() {
@@ -1483,6 +1463,16 @@ export default {
       }
       router.push("/chat/sessionlist");
     };
+
+    // 处理输入框键盘事件：Enter 发送，Shift+Enter 换行
+    const handleInputKeydown = (event) => {
+      if (event.key === 'Enter' && !event.shiftKey) {
+        event.preventDefault(); // 阻止默认换行
+        sendMessage();
+      }
+      // Shift+Enter 保持默认行为（换行）
+    };
+
     const sendMessage = async () => {
       // 检查消息内容
       if (!data.chatMessage || data.chatMessage.trim() === "") {
@@ -1799,6 +1789,178 @@ export default {
       console.log(chatAvatarMessageRequest);
       store.state.socket.send(JSON.stringify(chatAvatarMessageRequest));
       scrollToBottom();
+    };
+
+    // 处理加密文件上传完成
+    const handleFileUploadComplete = async (uploadResult) => {
+      console.log('📁 加密文件上传完成:', uploadResult);
+      
+      const contactId = data.contactInfo.contact_id;
+      if (!contactId || !contactId.startsWith('U')) {
+        ElMessage.error('加密文件只能发送给单聊好友');
+        return;
+      }
+
+      try {
+        // 1. 检查是否有加密会话
+        const sessionExists = await hasSession(contactId);
+        let isPreKeyMessage = false;
+        let initData = null;
+
+        if (!sessionExists) {
+          console.log("会话不存在，正在建立加密会话...");
+          ElMessage.info("正在建立安全连接...");
+
+          // 获取对方的公钥束并建立会话
+          const response = await axios.get("/crypto/getPublicKeyBundle", {
+            params: { user_id: contactId },
+          });
+
+          if (response.data.code !== 200) {
+            throw new Error(response.data.message || "获取公钥束失败");
+          }
+
+          const publicKeyBundle = response.data.data;
+          initData = await createSession(
+            store.state.masterKey,
+            contactId,
+            publicKeyBundle
+          );
+          isPreKeyMessage = true;
+          console.log("✅ 加密会话已建立");
+        }
+
+        // 2. 构造文件元数据
+        const fileMetadata = JSON.stringify({
+          type: uploadResult.width ? 'image' : 'file',
+          ossKey: uploadResult.ossKey,
+          fileKey: uploadResult.fileKey,
+          fileIv: uploadResult.fileIv,
+          fileHash: uploadResult.fileHash,
+          fileName: uploadResult.fileName,
+          fileSize: uploadResult.fileSize,
+          mimeType: uploadResult.mimeType,
+          width: uploadResult.width || null,
+          height: uploadResult.height || null,
+          thumbnail: uploadResult.thumbnail || null,
+        });
+
+        // 3. 使用 Signal 协议加密文件元数据
+        const encryptedMessage = await encryptAndSendMessage(contactId, fileMetadata);
+        console.log("文件元数据已加密:", encryptedMessage);
+
+        // 4. 构造请求数据
+        const messageType = uploadResult.width ? 4 : 5; // 4=加密图片, 5=加密文件
+        const requestData = {
+          session_id: data.sessionId,
+          receiver_id: contactId,
+          message_type: isPreKeyMessage ? "PreKeyMessage" : "SignalMessage",
+          file_message_type: messageType,
+          ...encryptedMessage,
+        };
+
+        // 如果是 PreKeyMessage，添加初始化数据
+        if (isPreKeyMessage && initData) {
+          requestData.sender_identity_key = initData.identity_key;
+          requestData.sender_identity_key_curve25519 = initData.identity_key_curve25519;
+          requestData.sender_ephemeral_key = initData.ephemeral_key;
+          requestData.used_one_time_pre_key_id = initData.used_one_time_pre_key_id !== undefined 
+            ? initData.used_one_time_pre_key_id 
+            : initData.usedOneTimePreKeyId;
+        }
+
+        // 5. 发送到服务器
+        console.log("发送加密文件消息到服务器...");
+        const response = await axios.post("/message/sendEncryptedMessage", requestData);
+
+        if (response.data.code === 200) {
+          console.log("✅ 加密文件消息发送成功");
+          ElMessage.success(uploadResult.width ? '图片发送成功' : '文件发送成功');
+          
+          // 保存发送方的明文元数据到 IndexedDB
+          let messageId = response.data.data?.message_id;
+          if (messageId) {
+            messageId = messageId.trim();
+            try {
+              const { put, STORES } = await import('@/crypto/cryptoStore');
+              await put(STORES.SENT_MESSAGES, {
+                message_id: messageId,
+                plaintext: fileMetadata,
+                contact_id: contactId,
+                created_at: Date.now(),
+              });
+            } catch (error) {
+              console.error('保存文件消息元数据失败:', error);
+            }
+          }
+          
+          // 乐观更新：立即显示消息
+          if (messageId) {
+            const now = new Date();
+            const formatDateTime = (date) => {
+              const year = date.getFullYear();
+              const month = String(date.getMonth() + 1).padStart(2, '0');
+              const day = String(date.getDate()).padStart(2, '0');
+              const hours = String(date.getHours()).padStart(2, '0');
+              const minutes = String(date.getMinutes()).padStart(2, '0');
+              const seconds = String(date.getSeconds()).padStart(2, '0');
+              return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+            };
+
+            if (data.messageList == null) {
+              data.messageList = [];
+            }
+
+            data.messageList.push({
+              uuid: messageId,
+              send_id: data.userInfo.uuid,
+              send_name: data.userInfo.nickname,
+              send_avatar: data.userInfo.avatar,
+              receive_id: contactId,
+              type: messageType,
+              content: fileMetadata,
+              url: "",
+              file_type: uploadResult.mimeType,
+              file_name: uploadResult.fileName,
+              file_size: uploadResult.fileSize,
+              created_at: formatDateTime(now),
+              is_encrypted: true,
+              encryption_version: 1,
+            });
+
+            scrollToBottom();
+          }
+        } else {
+          throw new Error(response.data.message || "发送失败");
+        }
+      } catch (error) {
+        console.error("加密文件消息发送失败:", error);
+        ElMessage.error("发送失败：" + error.message);
+      }
+    };
+
+    // 处理文件上传错误
+    const handleFileUploadError = (error) => {
+      console.error("文件上传错误:", error);
+      ElMessage.error("文件上传失败：" + error.message);
+    };
+
+    // 解析文件信息（从消息内容中）
+    const parseFileInfo = (messageItem) => {
+      try {
+        // 如果 content 是字符串，尝试解析为 JSON
+        if (typeof messageItem.content === 'string') {
+          return JSON.parse(messageItem.content);
+        }
+        return messageItem.content;
+      } catch (error) {
+        console.error('解析文件信息失败:', error);
+        return {
+          type: messageItem.type === 4 ? 'image' : 'file',
+          fileName: messageItem.file_name || '未知文件',
+          fileSize: messageItem.file_size || 0,
+        };
+      }
     };
 
     const getMessageList = async () => {
@@ -2547,6 +2709,7 @@ export default {
       preToDeleteContact,
       preToBlackContact,
       sendMessage,
+      handleInputKeydown,
       getMessageList,
       getGroupMessageList,
       handleAgree,
@@ -2558,6 +2721,9 @@ export default {
       beforeFileUpload,
       downloadFile,
       getFileSize,
+      handleFileUploadComplete,
+      handleFileUploadError,
+      parseFileInfo,
       showUpdateGroupInfoModal,
       quitUpdateGroupInfoModal,
       beforeAvatarUpload,
@@ -2594,6 +2760,14 @@ export default {
 </script>
 
 <style scoped>
+.chat-footer-toolbar {
+  display: flex;
+  align-items: center;
+  padding: 8px 12px;
+  border-bottom: 1px solid #ebeef5;
+  gap: 8px;
+}
+
 .sessionlist-header {
   display: flex;
   flex-direction: row;
@@ -2825,7 +2999,8 @@ h3 {
   color: rgb(74, 72, 72);
   display: inline-block;
   max-width: 400px;
-  white-space: normal; /* 允许文本换行 */
+  white-space: pre-wrap; /* 保留换行符并允许自动换行 */
+  word-break: break-word; /* 长单词换行 */
   font-family: Arial, Helvetica, sans-serif;
   border-radius: 6px;
   padding: 3px;
@@ -2842,7 +3017,8 @@ h3 {
   color: rgb(74, 72, 72);
   display: inline-block;
   max-width: 400px;
-  white-space: normal; /* 允许文本换行 */
+  white-space: pre-wrap; /* 保留换行符并允许自动换行 */
+  word-break: break-word; /* 长单词换行 */
   font-family: Arial, Helvetica, sans-serif;
   border-radius: 6px;
   padding: 3px;

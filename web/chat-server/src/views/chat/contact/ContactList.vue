@@ -323,7 +323,7 @@
 </template>
 
 <script>
-import { reactive, toRefs, onMounted, computed, watch } from "vue";
+import { reactive, toRefs, onMounted, onUnmounted, computed, watch } from "vue";
 import { useRouter } from "vue-router";
 import { useStore } from "vuex";
 import Modal from "@/components/Modal.vue";
@@ -331,6 +331,7 @@ import SmallModal from "@/components/SmallModal.vue";
 import ContactListModal from "@/components/ContactListModal.vue";
 import NavigationModal from "@/components/NavigationModal.vue";
 import axios from "@/utils/axios";
+import eventBus from "@/utils/eventBus";
 import { ElMessage, ElMessageBox } from "element-plus";
 export default {
   name: "ContactList",
@@ -1165,6 +1166,15 @@ export default {
     };
 
 
+    // 处理新通知事件（实时刷新通知列表）
+    const handleNewNotification = (message) => {
+      console.log("🔔 [ContactList] 收到新通知事件，刷新通知列表");
+      // 刷新通知列表
+      getNotificationList();
+      // 刷新未读数量
+      getUnreadCount();
+    };
+
     // 初始化通知列表
     onMounted(() => {
       console.log("🎬 [ContactList] 组件 mounted，开始初始化");
@@ -1172,6 +1182,16 @@ export default {
       getNotificationList();
       getUnreadCount();
       console.log("🎬 [ContactList] 已调用 getNotificationList 和 getUnreadCount");
+      
+      // 监听新通知事件
+      eventBus.on('notification:new_notification', handleNewNotification);
+      console.log("🔔 [ContactList] 已注册新通知事件监听");
+    });
+
+    // 组件卸载时清理事件监听
+    onUnmounted(() => {
+      eventBus.off('notification:new_notification', handleNewNotification);
+      console.log("🔔 [ContactList] 已移除新通知事件监听");
     });
 
     return {

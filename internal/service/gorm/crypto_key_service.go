@@ -37,6 +37,9 @@ func (c *cryptoKeyService) SaveUserPublicKeys(userId string, req *request.Regist
 		"key_generation":                 1,
 	}
 
+	// 同时激活用户
+	updates["is_activated"] = 1
+
 	if err := gormDB.Model(&model.UserInfo{}).Where("uuid = ?", userId).Updates(updates).Error; err != nil {
 		zlog.Error("更新用户公钥失败: " + err.Error())
 		return err

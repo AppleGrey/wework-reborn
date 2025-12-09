@@ -32,7 +32,6 @@ func init() {
 	// 无需认证的路由
 	GE.POST("/login", v1.Login)
 	GE.POST("/register", v1.Register)
-	GE.POST("/registerWithCrypto", v1.RegisterWithCrypto) // 带加密密钥的注册
 
 	// 需要认证的路由组
 	auth := GE.Group("/")
@@ -45,7 +44,6 @@ func init() {
 		auth.POST("user/disableUsers", v1.DisableUsers)
 		auth.POST("user/deleteUsers", v1.DeleteUsers)
 		auth.POST("user/setAdmin", v1.SetAdmin)
-		auth.POST("user/sendSmsCode", v1.SendSmsCode)
 		auth.POST("user/smsLogin", v1.SmsLogin)
 		auth.POST("user/wsLogout", v1.WsLogout)
 		auth.POST("group/createGroup", v1.CreateGroup)
@@ -99,6 +97,10 @@ func init() {
 		auth.POST("crypto/uploadPublicKeyBundle", v1.UploadPublicKeyBundle)
 		auth.POST("crypto/replenishOneTimePreKeys", v1.ReplenishOneTimePreKeys)
 		auth.POST("crypto/rotateSignedPreKey", v1.RotateSignedPreKey)
+
+		// OSS 文件上传下载接口
+		auth.GET("oss/upload-credential", v1.GetUploadCredential)
+		auth.POST("oss/download-url", v1.GetDownloadURL)
 
 		auth.GET("wss", v1.WsLogin)
 	}

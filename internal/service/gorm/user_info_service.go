@@ -8,7 +8,6 @@ import (
 	"kama_chat_server/internal/dto/respond"
 	"kama_chat_server/internal/model"
 	myredis "kama_chat_server/internal/service/redis"
-	"kama_chat_server/internal/service/sms"
 	"kama_chat_server/pkg/constants"
 	"kama_chat_server/pkg/enum/user_info/user_status_enum"
 	jwtutil "kama_chat_server/pkg/util/jwt"
@@ -64,6 +63,13 @@ func (u *userInfoService) Login(loginReq request.LoginRequest) (string, *respond
 		}
 		zlog.Error(res.Error.Error())
 		return constants.SYSTEM_ERROR, nil, -1
+	}
+
+	// 检查用户是否已激活
+	if user.IsActivated == 0 {
+		message := "账号异常，请重新注册"
+		zlog.Info(message + ": " + user.Account)
+		return message, nil, -2
 	}
 
 	// 验证密码
@@ -148,11 +154,6 @@ func (u *userInfoService) SmsLogin(req request.SmsLoginRequest) (string, *respon
 	return "登陆成功", loginRsp, 0
 }
 
-// SendSmsCode 发送短信验证码 - 验证码登录
-func (u *userInfoService) SendSmsCode(telephone string) (string, int) {
-	return sms.VerificationCode(telephone)
-}
-
 // checkTelephoneExist 检查手机号是否存在
 func (u *userInfoService) checkTelephoneExist(telephone string) (string, int) {
 	var user model.UserInfo
@@ -170,34 +171,37 @@ func (u *userInfoService) checkTelephoneExist(telephone string) (string, int) {
 }
 
 // checkAccountExist 检查账号是否存在
-func (u *userInfoService) checkAccountExist(account string) (string, int) {
+// 返回值: (message, ret, existingUser)
+// ret: 0=可以注册, -1=系统错误, -2=账号已被激活用户使用
+// existingUser: 如果存在未激活用户则返回该用户，否则为nil
+func (u *userInfoService) checkAccountExist(account string) (string, int, *model.UserInfo) {
 	var user model.UserInfo
 	if res := dao.GormDB.Where("account = ?", account).First(&user); res.Error != nil {
 		if errors.Is(res.Error, gorm.ErrRecordNotFound) {
 			zlog.Info("该账号不存在，可以注册")
-			return "", 0
+			return "", 0, nil
 		}
 		zlog.Error(res.Error.Error())
-		return constants.SYSTEM_ERROR, -1
+		return constants.SYSTEM_ERROR, -1, nil
+	}
+	// 账号存在，检查是否已激活
+	if user.IsActivated == 0 {
+		zlog.Info("该账号存在但未激活，可以覆盖注册")
+		return "", 0, &user
 	}
 	message := "该账号已被注册"
 	zlog.Info(message)
-	return message, -2
+	return message, -2, nil
 }
 
 // Register 注册，返回(message, register_respond_string, error)
+// 注册时用户处于未激活状态，需要上传密钥后才能激活
 func (u *userInfoService) Register(registerReq request.RegisterRequest) (string, *respond.RegisterRespond, int) {
 	// 检查账号是否已存在
-	message, ret := u.checkAccountExist(registerReq.Account)
+	message, ret, existingUser := u.checkAccountExist(registerReq.Account)
 	if ret != 0 {
 		return message, nil, ret
 	}
-
-	// 创建新用户
-	var newUser model.UserInfo
-	newUser.Uuid = "U" + random.GetNowAndLenRandomString(11)
-	newUser.Account = registerReq.Account
-	newUser.Nickname = registerReq.Nickname
 
 	// 加密密码
 	hashedPassword, err := password.HashPassword(registerReq.Password)
@@ -205,17 +209,50 @@ func (u *userInfoService) Register(registerReq request.RegisterRequest) (string,
 		zlog.Error("密码加密失败: " + err.Error())
 		return constants.SYSTEM_ERROR, nil, -1
 	}
-	newUser.Password = hashedPassword
 
-	newUser.Avatar = "https://cube.elemecdn.com/0/88/03b0d39583f48206768a7534e55bcpng.png"
-	newUser.CreatedAt = time.Now()
-	newUser.IsAdmin = 0
-	newUser.Status = user_status_enum.NORMAL
+	var newUser model.UserInfo
 
-	res := dao.GormDB.Create(&newUser)
-	if res.Error != nil {
-		zlog.Error(res.Error.Error())
-		return constants.SYSTEM_ERROR, nil, -1
+	// 如果存在未激活的用户，覆盖该记录
+	if existingUser != nil {
+		zlog.Info("覆盖未激活用户: " + existingUser.Uuid)
+		// 删除旧的一次性预密钥
+		if err := dao.GormDB.Where("user_id = ?", existingUser.Uuid).Delete(&model.OneTimePreKey{}).Error; err != nil {
+			zlog.Error("删除旧的一次性预密钥失败: " + err.Error())
+		}
+		newUser = *existingUser
+		newUser.Nickname = registerReq.Nickname
+		newUser.Password = hashedPassword
+		newUser.Avatar = "https://cube.elemecdn.com/0/88/03b0d39583f48206768a7534e55bcpng.png"
+		newUser.CreatedAt = time.Now()
+		newUser.IsAdmin = 0
+		newUser.Status = user_status_enum.NORMAL
+		newUser.IsActivated = 0 // 仍然是未激活状态
+		// 清空旧的加密密钥
+		newUser.IdentityKeyPublic = ""
+		newUser.IdentityKeyPublicCurve25519 = ""
+		newUser.SignedPreKeyPublic = ""
+		newUser.SignedPreKeySignature = ""
+
+		if res := dao.GormDB.Save(&newUser); res.Error != nil {
+			zlog.Error(res.Error.Error())
+			return constants.SYSTEM_ERROR, nil, -1
+		}
+	} else {
+		// 创建新用户
+		newUser.Uuid = "U" + random.GetNowAndLenRandomString(11)
+		newUser.Account = registerReq.Account
+		newUser.Nickname = registerReq.Nickname
+		newUser.Password = hashedPassword
+		newUser.Avatar = "https://cube.elemecdn.com/0/88/03b0d39583f48206768a7534e55bcpng.png"
+		newUser.CreatedAt = time.Now()
+		newUser.IsAdmin = 0
+		newUser.Status = user_status_enum.NORMAL
+		newUser.IsActivated = 0 // 未激活状态
+
+		if res := dao.GormDB.Create(&newUser); res.Error != nil {
+			zlog.Error(res.Error.Error())
+			return constants.SYSTEM_ERROR, nil, -1
+		}
 	}
 
 	// 生成 JWT token
@@ -241,90 +278,6 @@ func (u *userInfoService) Register(registerReq request.RegisterRequest) (string,
 	year, month, day := newUser.CreatedAt.Date()
 	registerRsp.CreatedAt = fmt.Sprintf("%d.%d.%d", year, month, day)
 
-	return "注册成功", registerRsp, 0
-}
-
-// RegisterWithCrypto 注册（带加密密钥），返回(message, register_respond_string, error)
-func (u *userInfoService) RegisterWithCrypto(registerReq request.RegisterCryptoRequest) (string, *respond.RegisterRespond, int) {
-	// 检查账号是否已存在
-	message, ret := u.checkAccountExist(registerReq.Account)
-	if ret != 0 {
-		return message, nil, ret
-	}
-
-	// 创建新用户
-	var newUser model.UserInfo
-	newUser.Uuid = "U" + random.GetNowAndLenRandomString(11)
-	newUser.Account = registerReq.Account
-	newUser.Nickname = registerReq.Nickname
-
-	// 加密密码
-	hashedPassword, err := password.HashPassword(registerReq.Password)
-	if err != nil {
-		zlog.Error("密码加密失败: " + err.Error())
-		return constants.SYSTEM_ERROR, nil, -1
-	}
-	newUser.Password = hashedPassword
-
-	newUser.Avatar = "https://cube.elemecdn.com/0/88/03b0d39583f48206768a7534e55bcpng.png"
-	newUser.CreatedAt = time.Now()
-	newUser.IsAdmin = 0
-	newUser.Status = user_status_enum.NORMAL
-
-	// 使用事务确保用户创建和密钥保存的原子性
-	tx := dao.GormDB.Begin()
-	if tx.Error != nil {
-		zlog.Error("开始事务失败: " + tx.Error.Error())
-		return constants.SYSTEM_ERROR, nil, -1
-	}
-
-	// 创建用户
-	if err := tx.Create(&newUser).Error; err != nil {
-		tx.Rollback()
-		zlog.Error("创建用户失败: " + err.Error())
-		return constants.SYSTEM_ERROR, nil, -1
-	}
-
-	// 保存加密公钥（在同一事务中）
-	// 直接传入事务实例，避免修改全局变量
-	err = CryptoKeyService.SaveUserPublicKeys(newUser.Uuid, &registerReq, tx)
-
-	if err != nil {
-		tx.Rollback()
-		zlog.Error("保存加密密钥失败: " + err.Error())
-		return "保存加密密钥失败", nil, -1
-	}
-
-	// 提交事务
-	if err := tx.Commit().Error; err != nil {
-		zlog.Error("提交事务失败: " + err.Error())
-		return constants.SYSTEM_ERROR, nil, -1
-	}
-
-	// 生成 JWT token
-	token, err := jwtutil.GenerateToken(newUser.Uuid, newUser.Account, newUser.Nickname, newUser.IsAdmin)
-	if err != nil {
-		zlog.Error("生成 token 失败: " + err.Error())
-		return constants.SYSTEM_ERROR, nil, -1
-	}
-
-	registerRsp := &respond.RegisterRespond{
-		Token:     token,
-		Uuid:      newUser.Uuid,
-		Account:   newUser.Account,
-		Nickname:  newUser.Nickname,
-		Email:     newUser.Email,
-		Avatar:    newUser.Avatar,
-		Gender:    newUser.Gender,
-		Birthday:  newUser.Birthday,
-		Signature: newUser.Signature,
-		IsAdmin:   newUser.IsAdmin,
-		Status:    newUser.Status,
-	}
-	year, month, day := newUser.CreatedAt.Date()
-	registerRsp.CreatedAt = fmt.Sprintf("%d.%d.%d", year, month, day)
-
-	zlog.Info("用户注册成功（带加密）: " + newUser.Account)
 	return "注册成功", registerRsp, 0
 }
 

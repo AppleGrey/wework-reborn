@@ -9,7 +9,6 @@
       <el-container class="chat-window-container">
         <el-aside class="aside-container">
           <NavigationModal></NavigationModal>
-          <ContactListModal></ContactListModal>
         </el-aside>
         <div class="settings-window">
           <div class="settings-title"><h2>设置</h2></div>
@@ -68,13 +67,11 @@ import { useRouter } from "vue-router";
 import { ElMessage } from "element-plus";
 import axios from "@/utils/axios";
 import NavigationModal from "@/components/NavigationModal.vue";
-import ContactListModal from "@/components/ContactListModal.vue";
 
 export default {
   name: "Settings",
   components: {
     NavigationModal,
-    ContactListModal,
   },
   setup() {
     const router = useRouter();
