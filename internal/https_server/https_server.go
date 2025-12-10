@@ -44,7 +44,6 @@ func init() {
 		auth.POST("user/disableUsers", v1.DisableUsers)
 		auth.POST("user/deleteUsers", v1.DeleteUsers)
 		auth.POST("user/setAdmin", v1.SetAdmin)
-		auth.POST("user/smsLogin", v1.SmsLogin)
 		auth.POST("user/wsLogout", v1.WsLogout)
 		auth.POST("group/createGroup", v1.CreateGroup)
 		auth.POST("group/loadMyGroup", v1.LoadMyGroup)

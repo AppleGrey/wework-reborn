@@ -12,11 +12,6 @@ const routes = [
     component: () => import('../views/access/Login.vue')
   },
   {
-    path: '/smsLogin',
-    name: 'smsLogin',
-    component: () => import('../views/access/SmsLogin.vue')
-  },
-  {
     path: '/register',
     name: 'Register',
     component: () => import('../views/access/Register.vue')
@@ -64,7 +59,7 @@ router.beforeEach((to, from, next) => {
   
   // 如果用户未登录，检查是否是登录/注册页面
   if (!store.state.userInfo.uuid) {
-    if (to.path === '/login' || to.path === '/register' || to.path === '/smsLogin') {
+    if (to.path === '/login' || to.path === '/register') {
       next()
       return
     }

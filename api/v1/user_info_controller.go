@@ -42,21 +42,6 @@ func Login(c *gin.Context) {
 	JsonBack(c, message, ret, userInfo)
 }
 
-// SmsLogin 验证码登录
-func SmsLogin(c *gin.Context) {
-	var req request.SmsLoginRequest
-	if err := c.BindJSON(&req); err != nil {
-		zlog.Error(err.Error())
-		c.JSON(http.StatusOK, gin.H{
-			"code":    500,
-			"message": constants.SYSTEM_ERROR,
-		})
-		return
-	}
-	message, userInfo, ret := gorm.UserInfoService.SmsLogin(req)
-	JsonBack(c, message, ret, userInfo)
-}
-
 // UpdateUserInfo 修改用户信息
 func UpdateUserInfo(c *gin.Context) {
 	var req request.UpdateUserInfoRequest

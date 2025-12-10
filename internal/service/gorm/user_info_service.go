@@ -7,7 +7,6 @@ import (
 	"kama_chat_server/internal/dto/request"
 	"kama_chat_server/internal/dto/respond"
 	"kama_chat_server/internal/model"
-	myredis "kama_chat_server/internal/service/redis"
 	"kama_chat_server/pkg/constants"
 	"kama_chat_server/pkg/enum/user_info/user_status_enum"
 	jwtutil "kama_chat_server/pkg/util/jwt"
@@ -103,55 +102,6 @@ func (u *userInfoService) Login(loginReq request.LoginRequest) (string, *respond
 	loginRsp.CreatedAt = fmt.Sprintf("%d.%d.%d", year, month, day)
 
 	return "登录成功", loginRsp, 0
-}
-
-// SmsLogin 验证码登录
-func (u *userInfoService) SmsLogin(req request.SmsLoginRequest) (string, *respond.LoginRespond, int) {
-	var user model.UserInfo
-	res := dao.GormDB.First(&user, "telephone = ?", req.Telephone)
-	if res.Error != nil {
-		if errors.Is(res.Error, gorm.ErrRecordNotFound) {
-			message := "用户不存在，请注册"
-			zlog.Error(message)
-			return message, nil, -2
-		}
-		zlog.Error(res.Error.Error())
-		return constants.SYSTEM_ERROR, nil, -1
-	}
-
-	key := "auth_code_" + req.Telephone
-	code, err := myredis.GetKey(key)
-	if err != nil {
-		zlog.Error(err.Error())
-		return constants.SYSTEM_ERROR, nil, -1
-	}
-	if code != req.SmsCode {
-		message := "验证码不正确，请重试"
-		zlog.Info(message)
-		return message, nil, -2
-	} else {
-		if err := myredis.DelKeyIfExists(key); err != nil {
-			zlog.Error(err.Error())
-			return constants.SYSTEM_ERROR, nil, -1
-		}
-	}
-
-	loginRsp := &respond.LoginRespond{
-		Uuid:      user.Uuid,
-		Account:   user.Account,
-		Nickname:  user.Nickname,
-		Email:     user.Email,
-		Avatar:    user.Avatar,
-		Gender:    user.Gender,
-		Birthday:  user.Birthday,
-		Signature: user.Signature,
-		IsAdmin:   user.IsAdmin,
-		Status:    user.Status,
-	}
-	year, month, day := user.CreatedAt.Date()
-	loginRsp.CreatedAt = fmt.Sprintf("%d.%d.%d", year, month, day)
-
-	return "登陆成功", loginRsp, 0
 }
 
 // checkTelephoneExist 检查手机号是否存在
